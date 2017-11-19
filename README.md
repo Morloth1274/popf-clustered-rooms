@@ -16,6 +16,7 @@ Build prerequisites:
 - cmake ( http://www.cmake.org/ )
 - the CBC mixed integer programming solver ( https://projects.coin-or.org/Cbc/ )
 - perl, bison and flex to build the parser
+- ROSPlan
 
 These are packaged with most linux distributions - on Ubuntu/Debian, the following should suffice:
 
@@ -24,8 +25,11 @@ sudo apt-get install cmake coinor-libcbc-dev coinor-libclp-dev coinor-libcoinuti
 Once installed, open a terminal and type the following:
 
 cd <directory containing this file>
+mkdir <build>
 cd <build>
-./buildscript
+source <ROSPlan>/devel/setup.bash
+export ROS_PACKAGE_PATH:$ROS_PACKAGE_PATH:<directory containgin this file>
+cmake ..
 make
 
 Assuming all goes well, the file 'build/popf/popf-clp' is then a the binary of popf.

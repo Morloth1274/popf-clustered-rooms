@@ -884,13 +884,19 @@ public:
             equality(VAL::current_analysis->pred_tab.symbol_probe("=")) {
 
         {
+            std::cout << "[ParameterDomainConstraints] Operator: " << opIn->name->getName() << std::endl;
             int i = 0;
             for (var_symbol_list::const_iterator p = op->parameters->begin();
                     p != op->parameters->end();++p, ++i) {
                 //   symbols[i] = *p;
-
+                std::cout << "\t" << (*p)->getName() << " is of type: " << (*p)->type->getName() << std::endl;
                 if (instantiatedValues.find((*p)->type) == instantiatedValues.end()) {
                     try {
+                        const std::vector<VAL::const_symbol*> types = tc.range(*p);
+                        for (VAL::const_symbol* s : types)
+                        {
+                            std::cout << "Symbol: " << s->getName() << std::endl;
+                        }
                         instantiatedValues[(*p)->type] = tc.range(*p);
                     } catch (TypeException e) {
 
@@ -902,7 +908,13 @@ public:
 
                         Verbose = true;
                         try {
+                            const std::vector<VAL::const_symbol*> types = tc.range(*p);
+                            for (VAL::const_symbol* s : types)
+                            {
+                                std::cout << "Symbol: " << s->getName() << std::endl;
+                            }
                             instantiatedValues[(*p)->type] = tc.range(*p);
+                            
                         } catch (TypeException f) {
                         }
                         exit(1);
@@ -921,6 +933,38 @@ public:
         }
         domainStack.push_front(ParameterDomainsAndConstraints(varCount));
         propagate();
+        
+        std::cout << "After propagating the constraints." << std::endl;
+        for (Inst::ParameterDomainsAndConstraints& pdac : domainStack)
+        {
+            for (std::pair<bool, std::set<int> >& d : pdac.domains)
+            {
+                if (d.first)
+                {
+                    std::cout << "All values are good." << std::endl;
+                }
+                else
+                {
+                    for (int i : d.second)
+                    {
+                        std::cout << " " << i;
+                    }
+                    std::cout << std::endl;
+                }
+            }
+        }
+        
+        
+        
+        for (unsigned int i = 0; i < vars.size(); ++i)
+        {
+            std::cout << vars[i]->getName() << " = {";
+            for (VAL::const_symbol* cs : possibleParameterValues[i])
+            {
+                std::cout << " " << cs->getName();
+            }
+            std::cout << "}" << std::endl;
+        }
 
         /*cout << "Final JPDCs:\n";
 
@@ -947,6 +991,7 @@ public:
     ~ParameterDomainConstraints() {};
 
     virtual void propagate() {
+        std::cout << "[ParameterDomainConstraints::propagate]" << std::endl;
         while (!updateFrom.empty()) {
 //   set<int>::iterator nItr = updateFrom.begin();
 //   const int currParam = *nItr;
@@ -969,10 +1014,11 @@ public:
      *  assumed to be reasonable.  @see domainStack, panic
      */
     virtual void visit_simple_goal(VAL::simple_goal * s) {
+        std::cout << "[ParameterDomainConstraints::visit_simple_goal]" << std::endl;
 #ifndef NDEBUG
         const bool jpdcDebug = (op == instantiatedOp::insistOnOp);
 #else
-        static const bool jpdcDebug = false;
+        static const bool jpdcDebug = true;
 #endif
 
         holding_pred_symbol * const hps = EPS(s->getProp()->head)->getParent();
@@ -991,6 +1037,7 @@ public:
             const holding_pred_symbol::PIt epsEnd = hps->pEnd();
 
             for (; epsItr != epsEnd; ++epsItr) {
+                (*epsItr)->write(std::cout);
                 if (!(*epsItr)->appearsStatic()) {
                     hpsIsStatic = false;
                     break;
@@ -1000,11 +1047,13 @@ public:
 
         if (!hpsIsStatic) {
             if (jpdcDebug) cout << " - Found a non-static fact " << s->getProp()->head->getName() << " at " << hps << std::endl;
+            cout << " - Found a non-static fact " << s->getProp()->head->getName() << " at " << hps << std::endl;
             if (!doUnion.front()) return;
             inPanic = true;
         }
 
         const bool debug = jpdcDebug; /// false;
+        cout << "Static precondition " << s->getProp()->head->getName() << " at " << hps << std::endl;
         if (debug || jpdcDebug) {
             cout << "Static precondition " << s->getProp()->head->getName() << " at " << hps << std::endl;
             hps->write(cout);
@@ -1036,7 +1085,7 @@ public:
         VAL::parameter_symbol_list::iterator argItr = s->getProp()->args->begin();
         for (int aff = 0; aff < affects; ++aff, ++argItr) {
             if (const VAL::const_symbol * const c = dynamic_cast<const VAL::const_symbol*>(*argItr)) {
-                if (debug) cout << "\tArgument " << aff << " is constant\n";
+                cout << "\tArgument " << aff << " is constant\n";
                 hasToMatch[aff] = c;
             } else {
                 const int paramID = static_cast<const VAL::IDsymbol<VAL::var_symbol>*>(*argItr)->getId();
@@ -1047,7 +1096,7 @@ public:
                     oldJPDCs[aff] = &(domainStack.front().jpdcs[paramID]);
                 }
                 parameterIndex[aff] = paramID;
-                if (debug) cout << "\tArgument " << aff << " is action parameter " << paramID << "\n";
+                cout << "\tArgument " << aff << " is action parameter " << paramID << "\n";
                 if (paramID > biggestParam) {
                     biggestParam = paramID;
                     affWithBiggestParam = aff;
@@ -1056,7 +1105,7 @@ public:
         }
 
         if (inPanic) {
-            if (debug) cout << "In a panic, returning\n";
+            cout << "In a panic, returning\n";
             return;
         }
 
@@ -1071,9 +1120,46 @@ public:
             const IState::iterator isEnd = InitialStateEvaluator::initState.end();
 
             for (; epsItr != epsEnd; ++epsItr) {
+                const pred_symbol* ps = *epsItr;
+                std::cout << "\tProcess: " << ps->getName() << " (" << ps << ")" << std::endl;
+                
+                std::cout << "Entire map:" << std::endl;
+                for (IState::const_iterator ci = InitialStateEvaluator::initState.begin(); ci != InitialStateEvaluator::initState.end(); ++ci)
+                {
+                    const VAL::pred_symbol* psi = ci->first;
+                    const vector<VAL::parameter_symbol_list*>& psli = ci->second;
+                    
+                    std::cout << "- " << psi->getName() << " (" << psi << ")" << std::endl;
+                    for (vector<VAL::parameter_symbol_list*>::const_iterator ci2 = psli.begin(); ci2 != psli.end(); ++ci2)
+                    {
+                        const VAL::parameter_symbol_list* list = *ci2;
+                        std::cout << "{";
+                        for (VAL::parameter_symbol_list::const_iterator ci3 = list->begin(); ci3 != list->end(); ++ci3)
+                        {
+                            const parameter_symbol* ps = *ci3;
+                            std::cout << " " << ps->getName();
+                        }
+                        std::cout << "}" << std::endl;
+                    }
+                }
+                
                 const IState::iterator isItr = InitialStateEvaluator::initState.find(*epsItr);
                 if (isItr != isEnd) {
                     checkInit.push_back(isItr);
+                    
+                    std::cout << "Added check init: " << std::endl;
+                    //for (std::pair<VAL::pred_symbol *,std::vector<VAL::parameter_symbol_list*> >& s : *isItr)
+                    {
+                        std::cout << isItr->first->getName() << " = {";
+                        for (typed_symbol_list<VAL::parameter_symbol>* psl : isItr->second)
+                        {
+                              for (VAL::parameter_symbol* ps : *psl)
+                              {
+                                  std::cout << " " << ps->getName();
+                              }
+                        }
+                        std::cout << "}" << std::endl;
+                    }
                 }
             }
         }
@@ -1083,6 +1169,7 @@ public:
             if (debug) {
                 cout << "No predicates of type " << s->getProp()->head->getName() << " are defined in the initial state, bailing out\n";
             }
+            cout << "No predicates of type " << s->getProp()->head->getName() << " are defined in the initial state, bailing out\n";
             if (isect) {
                 for (int aff = 0; aff < affects; ++aff) {
                     if (oldSets[aff]) {
@@ -1133,7 +1220,7 @@ public:
                             if (hasToMatch[aff] == asConst) {
                                 scratch[aff] = -1;
                             } else {
-                                if (debug) cout << "\t\tDiscarding ground instance " << gi << " - const parameter mismatch\n";
+                                cout << "\t\tDiscarding ground instance " << gi << " - const parameter mismatch\n";
                                 keep = false;
                                 break;
                             }
@@ -1141,6 +1228,7 @@ public:
                             const pviLookup::iterator findEntry = parameterValuesToIndices[parameterIndex[aff]].find(asConst);
                             if (findEntry == parameterValuesToIndices[parameterIndex[aff]].end()) {
                                 // no way this argument of the fact can be used as a binding for the relevant action parameter
+                                cout << "\t\tDiscarding ground instance " << gi << " - not found in the lookup table\n";
                                 keep = false;
                                 break;
                             }
@@ -1151,6 +1239,7 @@ public:
                             if (isect) { // if we're keeping only the intersection  (i.e. doing conjunction over facts)
                                 if (oldSets[aff] && !oldSets[aff]->first) { // if the old choices are defined, and are non-empty
                                     if (oldSets[aff]->second.find(asInt) == oldSets[aff]->second.end()) { // if this binding has already been pruned
+                                        cout << "\t\tDiscarding ground instance " << gi << " - already pruned\n";
                                         keep = false;
                                         break;
                                     }
@@ -1161,7 +1250,7 @@ public:
                 }
 
                 if (keep) { // If the fact is consistent with permissible parameter values
-                    if (jpdcDebug || debug) {
+                    //if (jpdcDebug || debug) {
                         cout << "\t\tConsistent static fact " << gi << ": (" << hps->getName();
                         VAL::parameter_symbol_list::iterator wwItr = (*groundItr)->begin();
                         const VAL::parameter_symbol_list::iterator wwEnd = (*groundItr)->end();
@@ -1169,10 +1258,11 @@ public:
                             cout << " " << (*wwItr)->getName();
                         }
                         cout << ")\n";
-                    }
+                    //}
                     if (isect) {
                         for (int aff = 0; aff < affects; ++aff) {
                             if (scratch[aff] != -1) { // if it wasn't a const parameter
+                                std::cout << "Map " << aff << " to " << scratch[aff] << std::endl;
                                 newSets[aff].second.insert(scratch[aff]); // add it to the new domain of permissible values for the parameter
 
                                 if (aff == affWithBiggestParam) {
@@ -1182,9 +1272,9 @@ public:
                                         const int pIdx2 = parameterIndex[aff2];
                                         if (pIdx2 < 0) continue; // if it's a constant
                                         if (pIdx2 >= pIdx1) continue;           // only store backwards jpdcs (see comments on the jpdcs variable definition
-                                        if (jpdcDebug) {
+                                        //if (jpdcDebug) {
                                             cout << "  * JPDC: action parameter " << (pIdx1 + 1) << "=" << scratch[aff] << "  =>  " << (pIdx2 + 1) << "=" << scratch[aff2] << endl;
-                                        }
+                                        //}
                                         newJPDCs[aff].addRestriction(pIdx1, scratch[aff], pIdx2, scratch[aff2]);
                                     }
                                 }
@@ -1273,6 +1363,7 @@ public:
      * must be respected.
      */
     virtual void visit_conj_goal(VAL::conj_goal * c) {
+        std::cout << "[ParameterDomainConstraints::visit_conj_goal]" << std::endl;
         static const bool conjDebug = false;
         const bool haveSpecial = rootSpecial;
         rootSpecial = false;
@@ -1316,6 +1407,7 @@ public:
     * must be respected.
     */
     virtual void visit_disj_goal(VAL::disj_goal * c) {
+        std::cout << "[ParameterDomainConstraints::visit_disj_goal]" << std::endl;
         domainStack.push_front(domainStack.front());
 
         doUnion.push_front(true);
@@ -1560,6 +1652,8 @@ protected:
     PDCIterator(ParameterDomainConstraints * const p)
             : parent(p), pds(parent->domainStack.front()), varCount(p->varCount), lim(varCount - 1), allowedValuesForParameter(varCount),
             wholeSets(varCount), valItrs(varCount), valEnds(varCount), popSet(varCount) {
+                
+        std::cout << "[PDCIterator] Constructor." << std::endl;
         for (int i = 1; i < varCount; ++i) {
             popSet[i] = vector<bool>(i, false);
         }
@@ -1633,7 +1727,7 @@ public:
      *  @see rollover
      */
     void next() {
-        static const bool debug = false;
+        static const bool debug = true;
 
         static int x;
         x = 0;
@@ -1688,6 +1782,7 @@ PDCIterator* ParameterDomainConstraints::getIterator()
 
 void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem * prb, VAL::TypeChecker & tc)
 {
+    std::cout << "[instantiatedOp::instantiate] Instantiate the operator: " << op->name->getName() << std::endl;
     FastEnvironment e(static_cast<const id_var_symbol_table*>(op->symtab)->numSyms());
 
     const int opParamCount = op->parameters->size();
@@ -1716,24 +1811,26 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
 #endif
 
 
-    //cout << c << " candidates to consider\n";
     SimpleEvaluator se(&tc, 0, ISC());
     if (!opParamCount) {
+        cout << "[instantiatedOp::instantiate] Instantiate action with no parameters." << std::endl;
         se.prepareForVisit(&e);
         op->visit(&se);
         if (!se.reallyFalse()) {
             FastEnvironment * ecpy = e.copy();
             instantiatedOp * o = new instantiatedOp(op, ecpy);
             if (instOps.insert(o)) {
+                cout << "[instantiatedOp::instantiate] Instatiated: " << *o << std::endl;
                 delete o;
-            };
+            }
 
-        };
+        } else {
+            cout << "[instantiatedOp::instantiate] This action will never become true, ignoring." << std::endl;
+        }
         return;
     };
 
     vector<VAL::var_symbol *> vars(opParamCount);
-
     {
         int i = 0;
         var_symbol_list::const_iterator p = op->parameters->begin();
@@ -1746,24 +1843,36 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
 
     auto_ptr<PDCIterator> options(pdc.getIterator());
 
+    cout << "[instantiatedOp::instantiate] Start instantiating all possible actions." << std::endl;
     while (options->isValid()) {
+        
+        cout << "[instantiatedOp::instantiate] Consider: (" << op->name->getName();
         for (int x = 0; x < opParamCount; ++x) {
             e[vars[x]] = (*options)[x];
+            
+            std::cout << " " << e[vars[x]]->getName();
         }
+        std::cout << ")" << std::endl;
+        
+        
         if (!TIM::selfMutex(op, makeIterator(&e, op->parameters->begin()),
                             makeIterator(&e, op->parameters->end()))) {
-
+            cout << "[instantiatedOp::instantiate] Not self mutex." << std::endl;
             se.prepareForVisit(&e);
             const_cast<VAL::operator_*>(op)->visit(&se);
             if (!se.reallyFalse()) {
                 FastEnvironment * ecpy = e.copy();
                 instantiatedOp * o = new instantiatedOp(op, ecpy);
                 if (instOps.insert(o)) {
+                    cout << "[instantiatedOp::instantiate] Was already part of the set!" << std::endl;
                     delete o;
-                };
+                } else {
+                    cout << "[instantiatedOp::instantiate] Added as a new operator." << std::endl;
+                }
             }
 #ifndef NDEBUG
             else if (insistOnOp && insistOnOp == op) {
+                cout << "[instantiatedOp::instantiate] Not accepted, but insist to create it anyway!" << std::endl;
                 bool allMatched = true;
                 int p = 0;
                 for (var_symbol_list::const_iterator a = op->parameters->begin();
@@ -1783,6 +1892,8 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
                     cout << ") - preconditions evaluated to false\n";
                     exit(1);
                 }
+            } else {
+                cout << "[instantiatedOp::instantiate] Not accepted, moving on!" << std::endl;
             }
 #endif
 

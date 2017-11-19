@@ -34,14 +34,16 @@
 #include <set>
 #include <map>
 #include <vector>
+#include "parsing/VisitController.h"
+
 using std::vector;
 using std::set;
 using std::iterator;
 
 using namespace TIM;
-using VAL::pddl_type;
+//using VAL::pddl_type;
 using VAL::FastEnvironment;
-using VAL::operator_;
+//using VAL::operator_;
 using VAL::var_symbol;
 
 namespace Inst {
@@ -52,23 +54,24 @@ using Inst::instantiatedOp;
 
 namespace SAS {
 
+class ValueRep;
 extern bool use_sasoutput;
 
 class ValHolder {
 protected:
 	PropertySpace * pspace;
 	const PropertyState * pstate;
-	const pddl_type * forThis;
+	const VAL::pddl_type * forThis;
 	Property * prop;
 public:
-	ValHolder(const pddl_type * pt,const PropertyState * ps,PropertySpace * prpsp,Property * p) : 
+	ValHolder(const VAL::pddl_type * pt,const PropertyState * ps,PropertySpace * prpsp,Property * p) : 
 		pspace(prpsp), pstate(ps), forThis(pt), prop(p)
 	{};
 	virtual ~ValHolder() {};
 	virtual void write(ostream & o) const = 0;
 	const PropertyState * getState() const {return pstate;};
 	Property * getProp() const {return prop;};
-	const pddl_type * getType() const {return forThis;};
+	const VAL::pddl_type * getType() const {return forThis;};
 	PropertySpace * getSpace() const {return pspace;};
 	virtual bool operator==(const ValHolder & v) const
 	{
@@ -87,7 +90,7 @@ private:
 	int id;
 	vector<const PropertyState *> allStates;
 public:
-	PlaceHolder(const pddl_type * pt,const PropertyState * ps,PropertySpace * prpsp) :
+	PlaceHolder(const VAL::pddl_type * pt,const PropertyState * ps,PropertySpace * prpsp) :
 		ValHolder(pt,ps,prpsp,0), id(idGen++)
 	{
 		allStates.push_back(ps);
@@ -124,14 +127,14 @@ public:
 // ie the arguments of the proposition other than the one defining the properties.
 class TypesHolder : public ValHolder {
 private:
-	vector<pddl_type *> ptypes;
+	vector<VAL::pddl_type *> ptypes;
 public:
-	TypesHolder(const pddl_type * pt,const PropertyState * ps,PropertySpace * psp,Property * p,const vector<pddl_type *> & pts) : 
+	TypesHolder(const VAL::pddl_type * pt,const PropertyState * ps,PropertySpace * psp,Property * p,const vector<VAL::pddl_type *> & pts) : 
 		ValHolder(pt,ps,psp,p), ptypes(pts) 
 	{};
 	void write(ostream & o) const 
 	{
-		vector<pddl_type *>::const_iterator i = ptypes.begin();
+		vector<VAL::pddl_type *>::const_iterator i = ptypes.begin();
 		while(true)
 		{
 			o << (*i)->getName();
@@ -163,7 +166,7 @@ public:
 // This case is used when there are no other arguments.
 class NullHolder : public ValHolder {
 public:
-	NullHolder(const pddl_type * pt,const PropertyState * ps,PropertySpace * psp,Property * p) :
+	NullHolder(const VAL::pddl_type * pt,const PropertyState * ps,PropertySpace * psp,Property * p) :
 		ValHolder(pt,ps,psp,p)
 	{};
 	void write(ostream & o) const
@@ -507,17 +510,17 @@ ostream & operator << (ostream & o,const ValueElement & ve);
 class RangeRep;
 
 typedef map<TIMobjectSymbol *,vector<ValueElement *> > ElementRanges;
-typedef map<const pddl_type *,map<const TIMobjectSymbol *,RangeRep *> > Reachables;
+typedef map<const VAL::pddl_type *,map<const TIMobjectSymbol *,RangeRep *> > Reachables;
 
 class ValueStructure {
 private:
 	Range range;
-	pddl_type * pt;
+	VAL::pddl_type * pt;
 
 	ElementRanges rngs;
 	
 public:
-	ValueStructure(pddl_type * p) : pt(p) {};
+	ValueStructure(VAL::pddl_type * p) : pt(p) {};
 	
 	void add(const ValuesUnion & vu) {range.push_back(vu);};
 
@@ -547,7 +550,7 @@ public:
 
 	void initialise();
 	const Range & getRange() const {return range;};
-	const pddl_type * getType() const {return pt;};
+	const VAL::pddl_type * getType() const {return pt;};
 	void update(const ValuesUnion & oldvu,const ValuesUnion & newvu1,const ValuesUnion & newvu2);
 	void liftFrom(ValueStructure & vs1,ValueStructure & vs2);
 	void setUpInitialState(Reachables & reachables);
@@ -557,7 +560,7 @@ ostream & operator<<(ostream & o,const ValueStructure & vs);
 
 
 
-typedef std::map<const pddl_type *,ValueStructure> FunctionRep;
+typedef std::map<const VAL::pddl_type *,ValueStructure> FunctionRep;
 
 class ValueStruct;
 class SASActionTemplate;
@@ -566,7 +569,7 @@ class ValueRep;
 class FunctionStructure {
 private:
 	FunctionRep frep;
-	vector<const pddl_type *> noStates;
+	vector<const VAL::pddl_type *> noStates;
 	typedef map<const operator_ *,SASActionTemplate*> SASActionTemplates;
 	SASActionTemplates sasActionTemplates;
 
@@ -574,7 +577,7 @@ private:
 						const PropertyState * ps);
 						
 	Reachables reachables;
-	map<const operator_ *,pair<int,int> > startOp;
+	map<const VAL::operator_ *,pair<int,int> > startOp;
 	int levels;
 	vector<int> unsatisfiedPrecs;
 
@@ -586,15 +589,15 @@ public:
 
 	void initialise();
 	void processActions();
-	const ValueStructure & forType(const pddl_type * pt) {return frep.find(pt)->second;};
-	bool hasFluent(const pddl_type * pt) const {return frep.find(pt) != frep.end();};
+	const ValueStructure & forType(const VAL::pddl_type * pt) {return frep.find(pt)->second;};
+	bool hasFluent(const VAL::pddl_type * pt) const {return frep.find(pt) != frep.end();};
 	void normalise();
-	void restructure(const operator_ * op,const var_symbol * prm,
-							const vector<const pddl_type *> & rtps);
+	void restructure(const VAL::operator_ * op,const var_symbol * prm,
+							const vector<const VAL::pddl_type *> & rtps);
 	void setUpInitialState();
 	bool growOneLevel();
-	int startFor(const operator_ * op) const {return startOp.find(op)->second.first;};
-	int endFor(const operator_ * op) const {return startOp.find(op)->second.second;};
+	int startFor(const VAL::operator_ * op) const {return startOp.find(op)->second.first;};
+	int endFor(const VAL::operator_ * op) const {return startOp.find(op)->second.second;};
 	bool tryMatchedPre(int k,instantiatedOp * iop,const var_symbol * var,
 							SASActionTemplate * sasact,ValueRep * vrep);
 	void buildLayers();
@@ -602,8 +605,37 @@ public:
 	iterator begin() const {return sasActionTemplates.begin();};
 	iterator end() const {return sasActionTemplates.end();};
 };
+/*
+class ConditionGatherer : public VAL::VisitController {
+private:
+	vector<vector<pair<Property*,VAL::proposition *> > > gathered;
+	vector<vector<ValueElement*> > values;
+	vector<VAL::proposition *> theStatics;
+	vector<VAL::proposition *> others;
+public:
+	ConditionGatherer(int n);
+	ConditionGatherer(const ConditionGatherer & cg);
+	
+	const vector<VAL::proposition*>& getStatics() const { return theStatics; }
+	const vector<VAL::proposition*>& getOthers() const { return others; }
+	
+	virtual void visit_simple_goal(VAL::simple_goal * p) ;
+	virtual void visit_qfied_goal(VAL::qfied_goal * p) ;
+	virtual void visit_conj_goal(VAL::conj_goal * p) ;
+	virtual void visit_disj_goal(VAL::disj_goal * p) ;
+	virtual void visit_timed_goal(VAL::timed_goal * p) ;
+	virtual void visit_imply_goal(VAL::imply_goal * p) ;
+	virtual void visit_neg_goal(VAL::neg_goal * p) ;
+	virtual void visit_comparison(VAL::comparison * p) ;
+	virtual void visit_proposition(VAL::proposition * p) ;
+	virtual void visit_simple_effect(VAL::simple_effect * p);
+	virtual void visit_effect_lists(VAL::effect_lists * p) ;
+	void collect(const VAL::operator_ * op,FunctionStructure * fs,bool stateForAll,map<const var_symbol *,vector<SAS::ValueRep *> > & valueFor);
+	SASActionTemplate * completeAction(VAL::operator_ * op,const map<const var_symbol *,vector<SAS::ValueRep *> > & pre,const map<const var_symbol *,vector<SAS::ValueRep *> > & post,
+											ConditionGatherer & cg) const;
+};
 
-
+*/
 };
 
 #endif

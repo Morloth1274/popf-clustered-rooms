@@ -83,6 +83,7 @@ map<VAL::pddl_type *,vector<VAL::const_symbol*> > instantiatedOp::values;
 
 void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * prb,VAL::TypeChecker & tc)
 {
+	std::cout << "[instantiatedOp::instantiate] Instantiate the operator " << op->name->getName() << std::endl;
 	FastEnvironment e(static_cast<const id_var_symbol_table*>(op->symtab)->numSyms());
 	vector<vector<VAL::const_symbol*>::const_iterator> vals(op->parameters->size());
 	vector<vector<VAL::const_symbol*>::const_iterator> starts(op->parameters->size());
@@ -104,11 +105,14 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 		vars[i] = *p;
 		c *= values[(*p)->type].size();
 	};
-//	cout << c << " candidates to consider\n";
+	cout << "[instantiatedOp::instantiate] " << c << " candidates to consider" << std::endl;
 	if(!i)
 	{
 		SimpleEvaluator se(&e);
 		op->visit(&se);
+		
+		cout << "[instantiatedOp::instantiate] " << op->name->getName() << " visited." << std::endl;
+		
 		if(!se.reallyFalse())
 		{
 			FastEnvironment * ecpy = e.copy();
@@ -116,9 +120,12 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 			if(instOps.insert(o))
 			{
 				delete o;
-			};
-				
-		};
+			}
+		}
+		else
+		{
+			cout << "[instantiatedOp::instantiate] " << op->name->getName() << " is not applicable!" << std::endl;
+		}
 		return;
 	};
 	--i;
@@ -137,13 +144,12 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 				if(instOps.insert(o))
 				{
 					delete o;
-				};
-			};
-		};
-/*
- *		else
+				}
+			}
+		}
+		else
 		{
-			cout << "Killed\n" << op->name->getName() << "(";
+			cout << "[instantiatedOp::instantiate] Killed" << std::endl << op->name->getName() << "(";
 			for(var_symbol_list::const_iterator a = op->parameters->begin();
 					a != op->parameters->end();++a)
 			{
@@ -151,7 +157,6 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 			};
 			cout << ")\n";
 		};
-*/
 		int x = 0;
 		++vals[0];
 		if(vals[0] != ends[0]) e[vars[0]] = *(vals[0]);
@@ -295,6 +300,7 @@ public:
 
 void instantiatedOp::createAllLiterals(VAL::problem * p) 
 {
+	std::cout << "Create all the literals!" << std::endl;
 	Collector c(0,0,literals,pnes);
 	p->visit(&c);
 	for(OpStore::iterator i = instOps.begin(); i != instOps.end(); ++i)

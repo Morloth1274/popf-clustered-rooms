@@ -49,6 +49,83 @@ TemporalConstraints * PartialOrderTransformer::emptyTemporalConstraints()
     return new TemporalConstraints();
 }
 
+// Bram: to change.
+void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment & a, StepAndBeforeOrAfter stepBA)
+{
+	/*
+	std::cout << "****[POTHelper_updateForPathfinder]" << std::endl;
+	theState.printState(std::cout);
+	std::cout << std::endl;
+	// Check which action was called and call the path planner to update the connected properties.
+	if (a.first->forOp()->name->getName() == "push")
+	{
+		// Create all literals that are related to 'connected to'.
+		
+		list<Literal*>::iterator effItr = addEffs.begin();
+		const list<Literal*>::iterator effEnd = addEffs.end();
+
+		const PropositionAnnotation afterNow(stepID);
+
+		for (; effItr != effEnd; ++effItr) {
+			const int litID = (*effItr)->getID();
+
+			bool previouslyDeleted = false;
+
+			{
+					const map<int, PropositionAnnotation>::iterator stateItr = theState.retired.find(litID);
+					if (stateItr != theState.retired.end()) {
+						assert(theState.first.find(litID) == theState.first.end());
+						previouslyDeleted = true;
+						{
+							const StepAndBeforeOrAfter deletedAt = stateItr->second.negativeAvailableFrom;
+							assert(!deletedAt.never());
+
+							if (deletedAt.stepID != stepID) {
+									theState.temporalConstraints->addOrdering(deletedAt.stepID, stepID, (deletedAt.beforeOrAfter == StepAndBeforeOrAfter::AFTER));
+							}
+
+							if (applyDebug) {
+									cout << "\t" << *(*effItr) << " had previously been deleted " << deletedAt;
+							}
+
+						}
+
+						PropositionAnnotation & toUpdate = theState.first.insert(*stateItr).first->second;
+						toUpdate.markAsAdded(stepBA);
+						theState.retired.erase(stateItr);
+
+						if (applyDebug) {
+							cout << ", and is now available from " << stepBA << "\n";
+						}
+
+					}
+
+			}
+
+			if (!previouslyDeleted) {
+					const pair<map<int, PropositionAnnotation>::iterator, bool> stateItrPair = theState.first.insert(make_pair(litID, afterNow));
+
+					if (!stateItrPair.second) { // if we haven't just added it (i.e. it was there already)
+						if (stateItrPair.first->second.availableFrom.stepID || stateItrPair.first->second.availableFrom.beforeOrAfter == StepAndBeforeOrAfter::AFTER) {
+							if (applyDebug) {
+									cout << "\t" << *(*effItr) << " used to be available from step " << stateItrPair.first->second.availableFrom.stepID << ", adding ordering constraint\n";
+							}
+							theState.temporalConstraints->addOrdering(stateItrPair.first->second.availableFrom.stepID, stepID, false);
+						}
+						stateItrPair.first->second.availableFrom.stepID = stepID; // override when it's available from
+						stateItrPair.first->second.availableFrom.beforeOrAfter = StepAndBeforeOrAfter::AFTER; // ...  to after now
+
+					}
+
+					if (applyDebug) {
+						cout << "\t" << *(*effItr) << " is brand new and available from " << stepBA << "\n";
+					}
+			}
+		}
+	}
+	*/
+}
+
 void POTHelper_updateForInstantaneousEffects(MinimalState & theState, const StepAndBeforeOrAfter & stepBA, list<Literal*> & delEffs, list<Literal*> & addEffs)
 {
     const unsigned int stepID = stepBA.stepID;
@@ -760,269 +837,284 @@ static unsigned int oldStepCount;
 
 MinimalState & PartialOrderTransformer::applyAction(MinimalState & theStateHidden, const ActionSegment & a, const bool & inPlace, const double & minDur, const double & maxDur)
 {
-    applyDebug = Globals::globalVerbosity & 1048576;
+	std::cout << "[PartialOrderTransformer::applyAction] " << std::endl;
+	std::cout << "The hidden state " << std::endl;
+	theStateHidden.printState(std::cout);
+	std::cout << "The action segment" << std::endl;
+	a.first->write(std::cout);
+	std::cout << std::endl;
+	applyDebug = Globals::globalVerbosity & 1048576;
+
+	unsigned int extensionNeeded = 0;
+
+	if (applyDebug) {
+		oldStepCount = theStateHidden.temporalConstraints->size();
+		cout << "Applying action.  Previously had space for constraints on " << oldStepCount << " steps\n";
+		assert(oldStepCount == theStateHidden.planLength);
+	}
+
+
+	if (a.first) {
+		if (a.second == VAL::E_AT_START) {
+				++extensionNeeded;
+				const int actID = a.first->getID();
+
+				if (!RPGBuilder::getRPGDEs(actID).empty()) {
+					++extensionNeeded; // isn't a non-temporal action
+					if (applyDebug) cout << "Temporal record extension of two needed - starting " << *(a.first) << "\n";
+				} else {
+					if (applyDebug) cout << "Temporal record extension of one needed - applying an instantaneous action, " << *(a.first) << "\n";
+				}
+		} else {
+				if (applyDebug) cout << "Temporal record extension of zero needed - is the end of " << *(a.first) << "\n";
+		}
+	} else {
+		extensionNeeded = (a.divisionID - theStateHidden.nextTIL) + 1;
+		if (applyDebug) {
+				cout << "Temporal record extension of " << extensionNeeded << " needed - applying TIL " << a.divisionID;
+				if (a.divisionID != theStateHidden.nextTIL) {
+					cout << "; next one would be " << theStateHidden.nextTIL;
+				}
+				cout << "\n";
+		}
+	}
+	MinimalState * const workOn = (inPlace ? &theStateHidden : new MinimalState(theStateHidden, extensionNeeded));
 
-    unsigned int extensionNeeded = 0;
+	if (inPlace && extensionNeeded) {
+		theStateHidden.temporalConstraints->extend(extensionNeeded);
+	}
 
-    if (applyDebug) {
-        oldStepCount = theStateHidden.temporalConstraints->size();
-        cout << "Applying action.  Previously had space for constraints on " << oldStepCount << " steps\n";
-        assert(oldStepCount == theStateHidden.planLength);
-    }
+	if (applyDebug) {
+		const unsigned int newStepCount = workOn->temporalConstraints->size();
+		cout << "Now have space for constraints on " << newStepCount << " steps\n";
+		assert(newStepCount - oldStepCount == extensionNeeded);
+	}
 
+	if (!a.first) { // applying a TIL
+		static vector<RPGBuilder::FakeTILAction*> & tilVec = RPGBuilder::getTILVec();
+			std::cout << "[PartialOrderTransformer::applyAction] applying TIL." << std::endl;
+		for (; workOn->nextTIL <= a.divisionID; ++(workOn->nextTIL)) {
 
-    if (a.first) {
-        if (a.second == VAL::E_AT_START) {
-            ++extensionNeeded;
-            const int actID = a.first->getID();
+				POTHelper_updateForInstantaneousEffects(*workOn,  StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), tilVec[workOn->nextTIL]->delEffects, tilVec[workOn->nextTIL]->addEffects);
+				++workOn->planLength;
+		}
 
-            if (!RPGBuilder::getRPGDEs(actID).empty()) {
-                ++extensionNeeded; // isn't a non-temporal action
-                if (applyDebug) cout << "Temporal record extension of two needed - starting " << *(a.first) << "\n";
-            } else {
-                if (applyDebug) cout << "Temporal record extension of one needed - applying an instantaneous action, " << *(a.first) << "\n";
-            }
-        } else {
-            if (applyDebug) cout << "Temporal record extension of zero needed - is the end of " << *(a.first) << "\n";
-        }
-    } else {
-        extensionNeeded = (a.divisionID - theStateHidden.nextTIL) + 1;
-        if (applyDebug) {
-            cout << "Temporal record extension of " << extensionNeeded << " needed - applying TIL " << a.divisionID;
-            if (a.divisionID != theStateHidden.nextTIL) {
-                cout << "; next one would be " << theStateHidden.nextTIL;
-            }
-            cout << "\n";
-        }
-    }
-    MinimalState * const workOn = (inPlace ? &theStateHidden : new MinimalState(theStateHidden, extensionNeeded));
+		workOn->temporalConstraints->setMostRecentStep(workOn->planLength - 1);
 
-    if (inPlace && extensionNeeded) {
-        theStateHidden.temporalConstraints->extend(extensionNeeded);
-    }
+		return *workOn;
+	}
 
-    if (applyDebug) {
-        const unsigned int newStepCount = workOn->temporalConstraints->size();
-        cout << "Now have space for constraints on " << newStepCount << " steps\n";
-        assert(newStepCount - oldStepCount == extensionNeeded);
-    }
+	const int actID = a.first->getID();
 
-    if (!a.first) { // applying a TIL
-        static vector<RPGBuilder::FakeTILAction*> & tilVec = RPGBuilder::getTILVec();
+	if (a.second == VAL::E_AT_START) {
 
-        for (; workOn->nextTIL <= a.divisionID; ++(workOn->nextTIL)) {
+		if (RPGBuilder::getRPGDEs(actID).empty()) { // non-temporal action
+				list<Literal*> & pres = RPGBuilder::getStartPropositionalPreconditions()[actID];
+				list<Literal*> & negpres = RPGBuilder::getStartNegativePropositionalPreconditions()[actID];
+				POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, workOn->planLength),
+															make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), SAFETOSKIP),
+															pres, negpres);
+
+				list<Literal*> & delEffs = RPGBuilder::getStartPropositionDeletes()[actID];
+				list<Literal*> & addEffs = RPGBuilder::getStartPropositionAdds()[actID];
+				std::cout << "[PartialOrderTransformer::applyAction] applying non-temporal effects." << std::endl;
+				POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), delEffs, addEffs);
+
+				{
+					set<int> mentioned;
+					POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getStartPreNumerics()[actID]);
+					POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getStartEffNumerics()[actID]);
+
+					POTHelper_updateForNumericVariables(*workOn, workOn->planLength, mentioned);
+				}
+
+				POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, workOn->planLength, RPGBuilder::getStartEffNumerics()[actID], minDur, maxDur);
+
+				workOn->temporalConstraints->setMostRecentStep(workOn->planLength);
+
+				++workOn->planLength;
+
+				//if (applyDebug) sanityCheck(*workOn);
+
+				//return *workOn;
+		}
+		else
+		{
 
-            POTHelper_updateForInstantaneousEffects(*workOn,  StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), tilVec[workOn->nextTIL]->delEffects, tilVec[workOn->nextTIL]->addEffects);
-            ++workOn->planLength;
-        }
 
-        workOn->temporalConstraints->setMostRecentStep(workOn->planLength - 1);
+			const bool skip = (RPGBuilder::canSkipToEnd(actID) ? SAFETOSKIP : UNSAFETOSKIP);
 
-        return *workOn;
-    }
+			workOn->temporalConstraints->setMostRecentStep(workOn->planLength);
 
-    const int actID = a.first->getID();
+			const int startStepID = workOn->planLength++;
+			const int endStepID = workOn->planLength++;
 
-    if (a.second == VAL::E_AT_START) {
+			if (applyDebug) {
+					assert(workOn->planLength == workOn->temporalConstraints->size());
+					cout << "New step IDs: " << startStepID << "," << endStepID << "\n";
+			}
 
-        if (RPGBuilder::getRPGDEs(actID).empty()) { // non-temporal action
-            list<Literal*> & pres = RPGBuilder::getStartPropositionalPreconditions()[actID];
-            list<Literal*> & negpres = RPGBuilder::getStartNegativePropositionalPreconditions()[actID];
-            POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, workOn->planLength),
-                                             make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), SAFETOSKIP),
-                                             pres, negpres);
+			workOn->temporalConstraints->addOrdering(startStepID, endStepID, false);
 
-            list<Literal*> & delEffs = RPGBuilder::getStartPropositionDeletes()[actID];
-            list<Literal*> & addEffs = RPGBuilder::getStartPropositionAdds()[actID];
+			set<int> mentioned;
 
-            POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), delEffs, addEffs);
+			POTHelper_updateForDurations(mentioned, *(RPGBuilder::getRPGDEs(actID)[0]));
 
-            {
-                set<int> mentioned;
-                POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getStartPreNumerics()[actID]);
-                POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getStartEffNumerics()[actID]);
+			{
+					if (applyDebug) cout << " * Requesting start preconditions\n";
+					list<Literal*> & pres = RPGBuilder::getStartPropositionalPreconditions()[actID];
+					list<Literal*> & negpres = RPGBuilder::getStartNegativePropositionalPreconditions()[actID];
+					POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, startStepID),
+																make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID), SAFETOSKIP),
+																pres, negpres);
 
-                POTHelper_updateForNumericVariables(*workOn, workOn->planLength, mentioned);
-            }
+					POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getStartPreNumerics()[actID]);
+			}
 
-            POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, workOn->planLength, RPGBuilder::getStartEffNumerics()[actID], minDur, maxDur);
+			{
 
-            workOn->temporalConstraints->setMostRecentStep(workOn->planLength);
+					if (applyDebug) cout << " * Applying start effects\n";
 
-            ++workOn->planLength;
+					list<Literal*> & delEffs = RPGBuilder::getStartPropositionDeletes()[actID];
+					list<Literal*> & addEffs = RPGBuilder::getStartPropositionAdds()[actID];
 
-            if (applyDebug) sanityCheck(*workOn);
+					std::cout << "[PartialOrderTransformer::applyAction] applying Start effects." << std::endl;
+					POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID), delEffs, addEffs);
+			}
 
-            return *workOn;
-        }
+			{
+					POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getStartEffNumerics()[actID]);
+					POTHelper_updateForNumericVariables(*workOn, startStepID, mentioned);
 
+					mentioned.clear();
 
-        const bool skip = (RPGBuilder::canSkipToEnd(actID) ? SAFETOSKIP : UNSAFETOSKIP);
+					POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, startStepID, RPGBuilder::getStartEffNumerics()[actID], minDur, maxDur);
+					POTHelper_registerContinuousNumericEffects(*workOn, startStepID, endStepID, RPGBuilder::getLinearDiscretisation()[actID], true);
 
-        workOn->temporalConstraints->setMostRecentStep(workOn->planLength);
+			}
 
-        const int startStepID = workOn->planLength++;
-        const int endStepID = workOn->planLength++;
+			{
+					if (applyDebug) cout << " * Requesting invariants from " << startStepID << " to " << endStepID << "\n";
+					list<Literal*> & pres = RPGBuilder::getInvariantPropositionalPreconditions()[actID];
+					list<Literal*> & negpres = RPGBuilder::getInvariantNegativePropositionalPreconditions()[actID];
+					POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID),
+																make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID), skip),
+																pres, negpres);
+					POTHelper_registerInvariantNumerics(*workOn, startStepID, endStepID, RPGBuilder::getInvariantNumerics()[actID], true);
+			}
 
-        if (applyDebug) {
-            assert(workOn->planLength == workOn->temporalConstraints->size());
-            cout << "New step IDs: " << startStepID << "," << endStepID << "\n";
-        }
+			if (skip == SAFETOSKIP) {
 
-        workOn->temporalConstraints->addOrdering(startStepID, endStepID, false);
+					{
+						
+						if (applyDebug) cout << " * Compression-safe action - requesting end preconditions\n";
+						list<Literal*> & pres = RPGBuilder::getEndPropositionalPreconditions()[actID];
+						list<Literal*> & negpres = RPGBuilder::getEndNegativePropositionalPreconditions()[actID];
+						POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
+																	make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), skip),
+																	pres, negpres);
+																	
+					}
+					
+					{
+						if (applyDebug) cout << " * Compression-safe action - recording end add effects\n";
 
-        set<int> mentioned;
+						static list<Literal*> delEffs;
+						list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
 
-        POTHelper_updateForDurations(mentioned, *(RPGBuilder::getRPGDEs(actID)[0]));
+						std::cout << "[PartialOrderTransformer::applyAction] applying end affects." << std::endl;
+						POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, addEffs);
+					}
 
-        {
-            if (applyDebug) cout << " * Requesting start preconditions\n";
-            list<Literal*> & pres = RPGBuilder::getStartPropositionalPreconditions()[actID];
-            list<Literal*> & negpres = RPGBuilder::getStartNegativePropositionalPreconditions()[actID];
-            POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, startStepID),
-                                             make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID), SAFETOSKIP),
-                                             pres, negpres);
+					++(workOn->actionsExecuting);
 
-            POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getStartPreNumerics()[actID]);
-        }
+			} else {
+					{
+						if (applyDebug) cout << " * Non-compression-safe action - avoiding end-delete--invariant clashes\n";
 
-        {
+						list<Literal*> & delEffs = RPGBuilder::getEndPropositionDeletes()[actID];
+						POTHelper_updateForEndDeleteInvariantInteractions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, false);
 
-            if (applyDebug) cout << " * Applying start effects\n";
+						list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
+						POTHelper_updateForEndDeleteInvariantInteractions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), addEffs, true);
 
-            list<Literal*> & delEffs = RPGBuilder::getStartPropositionDeletes()[actID];
-            list<Literal*> & addEffs = RPGBuilder::getStartPropositionAdds()[actID];
+					}
 
-            POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID), delEffs, addEffs);
-        }
+					workOn->startedActions[actID].insert(endStepID);
+					++(workOn->actionsExecuting);
 
-        {
-            POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getStartEffNumerics()[actID]);
-            POTHelper_updateForNumericVariables(*workOn, startStepID, mentioned);
+					// we only need record the action as started in the non-compression safe case
+					// as it end needs not be explicitly applied otherwise
+			}
+		}
 
-            mentioned.clear();
+		///if (applyDebug) sanityCheck(*workOn);
 
-            POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, startStepID, RPGBuilder::getStartEffNumerics()[actID], minDur, maxDur);
-            POTHelper_registerContinuousNumericEffects(*workOn, startStepID, endStepID, RPGBuilder::getLinearDiscretisation()[actID], true);
+		///return *workOn;
+	}
 
-        }
+	// otherwise, we're ending a non-compression-safe action
+	else
+	{
+	map<int, set<int> >::iterator saItr = workOn->startedActions.find(actID);
 
-        {
-            if (applyDebug) cout << " * Requesting invariants from " << startStepID << " to " << endStepID << "\n";
-            list<Literal*> & pres = RPGBuilder::getInvariantPropositionalPreconditions()[actID];
-            list<Literal*> & negpres = RPGBuilder::getInvariantNegativePropositionalPreconditions()[actID];
-            POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, startStepID),
-                                             make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID), skip),
-                                             pres, negpres);
-            POTHelper_registerInvariantNumerics(*workOn, startStepID, endStepID, RPGBuilder::getInvariantNumerics()[actID], true);
-        }
+	assert(saItr != workOn->startedActions.end());
 
-        if (skip == SAFETOSKIP) {
+	set<int>::iterator endItr = saItr->second.begin();
 
-            {
-                
-                if (applyDebug) cout << " * Compression-safe action - requesting end preconditions\n";
-                list<Literal*> & pres = RPGBuilder::getEndPropositionalPreconditions()[actID];
-                list<Literal*> & negpres = RPGBuilder::getEndNegativePropositionalPreconditions()[actID];
-                POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
-                                                 make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), skip),
-                                                 pres, negpres);
-                                                 
-            }
-            
-            {
-                if (applyDebug) cout << " * Compression-safe action - recording end add effects\n";
+	const int endStepID = *endItr;
+	const int startStepID = endStepID - 1;
+	saItr->second.erase(endItr);
+	if (saItr->second.empty()) workOn->startedActions.erase(saItr);
 
-                static list<Literal*> delEffs;
-                list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
+	--(workOn->actionsExecuting);
 
-                POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, addEffs);
-            }
+	workOn->temporalConstraints->setMostRecentStep(endStepID);
 
-            ++(workOn->actionsExecuting);
+	{
+		if (applyDebug) cout << " * De-registering invariants\n";
 
-        } else {
-            {
-                if (applyDebug) cout << " * Non-compression-safe action - avoiding end-delete--invariant clashes\n";
+		POTHelper_invariantsCanNowFinish(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
+													RPGBuilder::getInvariantPropositionalPreconditions()[actID],
+													RPGBuilder::getInvariantNegativePropositionalPreconditions()[actID]);
+		POTHelper_registerInvariantNumerics(*workOn, startStepID, endStepID, RPGBuilder::getInvariantNumerics()[actID], false);
+		POTHelper_registerContinuousNumericEffects(*workOn, -1, endStepID, RPGBuilder::getLinearDiscretisation()[actID], false);
+	}
 
-                list<Literal*> & delEffs = RPGBuilder::getEndPropositionDeletes()[actID];
-                POTHelper_updateForEndDeleteInvariantInteractions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, false);
+	{
+		if (applyDebug) cout << " * Requesting end preconditions\n";
+		list<Literal*> & pres = RPGBuilder::getEndPropositionalPreconditions()[actID];
+		list<Literal*> & negpres = RPGBuilder::getEndNegativePropositionalPreconditions()[actID];
+		POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
+													make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), SAFETOSKIP),
+													pres, negpres);
+	}
 
-                list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
-                POTHelper_updateForEndDeleteInvariantInteractions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), addEffs, true);
 
-            }
+	{
+		if (applyDebug) cout << " * Recording end effects\n";
+		list<Literal*> & delEffs = RPGBuilder::getEndPropositionDeletes()[actID];
+		list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
 
-            workOn->startedActions[actID].insert(endStepID);
-            ++(workOn->actionsExecuting);
+		std::cout << "[PartialOrderTransformer::applyAction] Recording end effects." << std::endl;
+		POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, addEffs);
+		POTHelper_updateForPathfinder(*workOn, a, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID));
+	}
 
-            // we only need record the action as started in the non-compression safe case
-            // as it end needs not be explicitly applied otherwise
-        }
+	{
+		set<int> mentioned;
+		POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getEndPreNumerics()[actID]);
+		POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getEndEffNumerics()[actID]);
+		POTHelper_updateForNumericVariables(*workOn, endStepID, mentioned);
 
-        if (applyDebug) sanityCheck(*workOn);
+		POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, endStepID, RPGBuilder::getEndEffNumerics()[actID], minDur, maxDur);
 
-        return *workOn;
-    }
+	}
+	}
+	
+	if (applyDebug) sanityCheck(*workOn);
 
-    // otherwise, we're ending a non-compression-safe action
-
-    map<int, set<int> >::iterator saItr = workOn->startedActions.find(actID);
-
-    assert(saItr != workOn->startedActions.end());
-
-    set<int>::iterator endItr = saItr->second.begin();
-
-    const int endStepID = *endItr;
-    const int startStepID = endStepID - 1;
-    saItr->second.erase(endItr);
-    if (saItr->second.empty()) workOn->startedActions.erase(saItr);
-
-    --(workOn->actionsExecuting);
-
-    workOn->temporalConstraints->setMostRecentStep(endStepID);
-
-    {
-        if (applyDebug) cout << " * De-registering invariants\n";
-
-        POTHelper_invariantsCanNowFinish(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
-                                         RPGBuilder::getInvariantPropositionalPreconditions()[actID],
-                                         RPGBuilder::getInvariantNegativePropositionalPreconditions()[actID]);
-        POTHelper_registerInvariantNumerics(*workOn, startStepID, endStepID, RPGBuilder::getInvariantNumerics()[actID], false);
-        POTHelper_registerContinuousNumericEffects(*workOn, -1, endStepID, RPGBuilder::getLinearDiscretisation()[actID], false);
-    }
-
-    {
-        if (applyDebug) cout << " * Requesting end preconditions\n";
-        list<Literal*> & pres = RPGBuilder::getEndPropositionalPreconditions()[actID];
-        list<Literal*> & negpres = RPGBuilder::getEndNegativePropositionalPreconditions()[actID];
-        POTHelper_updateForPreconditions(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::BEFORE, endStepID),
-                                         make_pair(StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), SAFETOSKIP),
-                                         pres, negpres);
-    }
-
-
-    {
-        if (applyDebug) cout << " * Recording end effects\n";
-        list<Literal*> & delEffs = RPGBuilder::getEndPropositionDeletes()[actID];
-        list<Literal*> & addEffs = RPGBuilder::getEndPropositionAdds()[actID];
-
-        POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, addEffs);
-    }
-
-    {
-        set<int> mentioned;
-        POTHelper_updateForNumericPreconditions(mentioned, RPGBuilder::getEndPreNumerics()[actID]);
-        POTHelper_updateForInputsToInstantaneousNumericEffects(mentioned, RPGBuilder::getEndEffNumerics()[actID]);
-        POTHelper_updateForNumericVariables(*workOn, endStepID, mentioned);
-
-        POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, endStepID, RPGBuilder::getEndEffNumerics()[actID], minDur, maxDur);
-
-    }
-
-    if (applyDebug) sanityCheck(*workOn);
-
-    return *workOn;
+	return *workOn;
 
 
 };

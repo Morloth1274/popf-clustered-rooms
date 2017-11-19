@@ -36,11 +36,15 @@
   <build_depend>flex</build_depend>
   <build_depend>bison</build_depend>
   <build_depend>coinor-solvers</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>squirrel_navigation_msgs</build_depend>
 
   <run_depend>roscpp</run_depend>
   <run_depend>flex</run_depend>
   <run_depend>bison</run_depend>
+  <run_depend>geometry_msgs</run_depend>
   <run_depend>coinor-solvers</run_depend>
+  <run_depend>squirrel_navigation_msgs</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

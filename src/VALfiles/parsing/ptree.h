@@ -656,7 +656,19 @@ public:
     parameter_symbol_list* args;
 
     proposition(pred_symbol* h, parameter_symbol_list* a) :
-	head(h), args(a) {};
+	head(h), args(a) {
+		/*
+		std::cout << "NEW PROPOSITION parameter symbol list! (" << head->getName() << std::endl;
+		for (parameter_symbol_list::iterator ci = a->begin(); ci != a->end(); ++ci)
+		{
+			const parameter_symbol* ps = *ci;
+			std::cout << " " << ps->getName();
+			ps->write(std::cout);
+			std::cout << std::endl;
+		}
+		std::cout << ")" << std::endl;
+		*/
+	};
 
 	proposition(pred_symbol* h, var_symbol_list* a) :
 	head(h), args(new parameter_symbol_list)
@@ -665,6 +677,17 @@ public:
 		{
 			args->push_back(*i);
 		};
+		/*
+		std::cout << "NEW PROPOSITION var_symbol_list! (" << head->getName() << std::endl;
+		for (var_symbol_list::iterator ci = a->begin(); ci != a->end(); ++ci)
+		{
+			const var_symbol* vs = *ci;
+			std::cout << " " << vs->getName();
+			vs->write(std::cout);
+			std::cout << std::endl;
+		}
+		std::cout << ")" << std::endl;
+		*/
 	};
 
     virtual ~proposition()

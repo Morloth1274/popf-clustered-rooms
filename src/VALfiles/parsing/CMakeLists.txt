@@ -45,5 +45,8 @@ set(libParsePDDL_SRCS
       pddl+.cpp ptree.cpp DebugWriteController.cpp
 )
 
-add_library(ParsePDDL STATIC ${libParsePDDL_SRCS})
+rosbuild_add_library(ParsePDDL STATIC ${libParsePDDL_SRCS})
+    target_link_libraries(ParsePDDL
+        -L/opt/ros/indigo/lib -lroscpp -lroscpp_serialization -lrostime -ltf -lboost_system -lrosconsole -lmessage_store -lmongoclient -lboost_thread
+    )
 

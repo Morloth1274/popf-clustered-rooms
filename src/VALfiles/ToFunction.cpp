@@ -415,6 +415,194 @@ vector<ValueElement *> constructValue(const ValueStructure & vvs,
 	return vs;
 };
 
+/*
+ConditionGatherer::ConditionGatherer(int n) : gathered(n) {};
+ConditionGatherer::ConditionGatherer(const ConditionGatherer & cg) : 
+	gathered(cg.gathered.size()), values(cg.values), 
+	theStatics(cg.theStatics), others() 
+{};
+
+void ConditionGatherer::visit_simple_goal(simple_goal * p) 
+{p->getProp()->visit(this);};
+void ConditionGatherer::visit_qfied_goal(qfied_goal * p) 
+{cout << "Cannot handle quantified preconditions yet!\n"; exit(0);};
+void ConditionGatherer::visit_conj_goal(conj_goal * p) 
+{p->getGoals()->visit(this);};
+void ConditionGatherer::visit_disj_goal(disj_goal * p) 
+{cout << "Cannot handle disjunctive preconditions yet!\n"; exit(0);};
+void ConditionGatherer::visit_timed_goal(timed_goal * p) 
+{cout << "CAUTION: Temporal goal\n";
+p->getGoal()->visit(this); 
+cout << "Done Temporal goal\n";};
+void ConditionGatherer::visit_imply_goal(imply_goal * p) 
+{cout << "Cannot handle implicative preconditions yet!\n";exit(0);};
+void ConditionGatherer::visit_neg_goal(neg_goal * p) 
+{cout << "Cannot handle negative preconditions yet (although should be able to manage !=)\n";};
+void ConditionGatherer::visit_comparison(comparison * p) 
+{cout << "No metric or special comparisons yet!\n"; exit(0);};
+void ConditionGatherer::visit_proposition(proposition * p) 
+{
+	if(EPS(p->head)->isStatic())
+	{
+		theStatics.push_back(p);
+		return;
+	};
+	if(p->args->empty())
+	{
+		others.push_back(p);
+		return;
+	};
+	parameter_symbol_list::const_iterator ps = p->args->begin();
+	for(unsigned int i = 0;i < p->args->size();++i,++ps)
+	{
+		cout << "Handle " << *(TPS(p->head)->property(i)) << "\n";
+// The following assumes that a property will be single valued for all parameters (of any types)
+// that may instantiate a particular position. This looks for any one single valued property 
+// matching the property from the proposition (which can be for a more general type than the 
+// properties that were originally marked as single valued).
+		vector<Property*> ms;
+		for(holding_pred_symbol::PIt pit = EPS(p->head)->getParent()->pBegin();
+				pit != EPS(p->head)->getParent()->pEnd();++pit)
+		{
+			ms.push_back(TPS(*pit)->property(i));
+
+		};
+		for(vector<Property*>::const_iterator prp = ms.begin();prp != ms.end();++prp)
+		{
+		cout << "Considering " << **prp << "\n";
+			if((*prp)->isSingleValued())
+			{
+				cout << "Think I should allocate this to parameter " << 
+					(static_cast<const IDsymbol<var_symbol>*>(*ps)->getId()) << "\n";
+				gathered[(static_cast<const IDsymbol<var_symbol>*>(*ps)->getId())].
+								push_back(make_pair(TPS(p->head)->property(i),p));
+				break;
+			};
+		};
+	};
+
+};
+void ConditionGatherer::visit_simple_effect(simple_effect * p) 
+{
+	p->prop->visit(this);
+};
+void ConditionGatherer::visit_effect_lists(effect_lists * p) 
+{
+	for(pc_list<simple_effect*>::iterator i = p->add_effects.begin();i != p->add_effects.end();++i)
+	{
+		(*i)->visit(this);
+	};
+};
+void ConditionGatherer::collect(const operator_ * op,FunctionStructure * fs,bool stateForAll,VMap & valueFor)
+{
+	vector<vector<ValueElement*> > prevalues(op->parameters->size());
+	if(!values.empty()) 
+	{
+		prevalues.clear();
+		prevalues.swap(values);
+	};
+	
+	SASOUTPUT {cout << (stateForAll?"Precondition":"Postcondition") 
+			<< " states for " << *TAS(op->name) << "\n";};
+	int c = 0;
+	for(var_symbol_list::const_iterator ps = op->parameters->begin();
+								ps != op->parameters->end();++ps,++c)
+	{
+		if(!stateForAll && !TAS(op->name)->hasRuleFor(c)) continue;
+//			cout << "For parameter " << (*ps)->getName() << " of type " 
+//							<< (*ps)->type->getName() << "\n";
+		vector<const pddl_type *> tps,tmptps;
+		if(!fs->hasFluent((*ps)->type))
+		{
+			//values.push_back(vector<ValueElement*>());
+//				cout << "This type has no state\n";
+			tmptps = theTC->leaves((*ps)->type);
+			for(vector<const pddl_type *>::const_iterator xx = tmptps.begin();xx != tmptps.end();++xx)
+			{
+				if(fs->hasFluent(*xx))
+				{
+//						cout << "Should consider type " << (*xx)->getName() << "\n";
+					tps.push_back(*xx);
+				};
+			};
+		}
+		else
+		{
+
+			// Generally we should ascend the entire hierarchy looking for fluents.
+			const pddl_type * ttp = (*ps)->type;
+			while(ttp)
+			{
+				if(fs->hasFluent(ttp)) 
+				{
+					tps.push_back(ttp);
+//						cout << "Pushing type " << ttp->getName() << " for " << (*ps)->getName() << "\n";
+				};
+				ttp = ttp->type;
+			};
+			
+		};
+		if(tps.empty())
+		{
+			values.push_back(vector<ValueElement*>());
+			continue;
+		};
+		for(vector<const pddl_type *>::const_iterator atp = tps.begin();atp != tps.end();++atp)
+		{
+			values.push_back(constructValue(fs->forType(*atp),
+							gathered[(static_cast<const IDsymbol<var_symbol>*>(*ps)->getId())],
+							prevalues[values.size()]));
+			int cc = 0;
+			for(vector<ValueElement*>::const_iterator ve = values[values.size()-1].begin();
+					ve != values[values.size()-1].end();++ve,++cc)
+			{
+				if((*ve)->size() > 0)
+				{
+					SASOUTPUT {cout << (*atp)->getName() << " [" << cc << "] " << (*ps)->getName() << " = "
+						<< **ve << "\n";};
+					valueFor[*ps].push_back(new ValueRep(*atp,cc,*ve));
+				};
+			};
+		};
+	};
+	SASOUTPUT {
+	if(stateForAll && !theStatics.empty())
+	{
+		cout << "\nStatic conditions:\n";
+		for(vector<proposition*>::const_iterator s = theStatics.begin();s != theStatics.end();++s)
+		{
+			cout << "(" << (*s)->head->getName();
+			for(parameter_symbol_list::const_iterator pm = (*s)->args->begin();
+					pm !=(*s)->args->end();++pm)
+			{
+				cout << " " << (*pm)->getName();
+			};
+			cout << ")\n";
+		};
+	};
+	if(!others.empty())
+	{
+		cout << "Other conditions:\n";
+		for(vector<proposition*>::const_iterator s = others.begin();s != others.end();++s)
+		{
+			cout << "(" << (*s)->head->getName();
+			for(parameter_symbol_list::const_iterator pm = (*s)->args->begin();
+					pm !=(*s)->args->end();++pm)
+			{
+				cout << " " << (*pm)->getName();
+			};
+			cout << ")\n";
+		};
+	};
+	};
+};
+SASActionTemplate * ConditionGatherer::completeAction(operator_ * op,const VMap & pre,const VMap & post,
+										ConditionGatherer & cg) const
+{
+	return new SASActionTemplate(op,pre,post,theStatics,others,cg.others);
+};
+*/
+
 class ConditionGatherer : public VisitController {
 private:
 	vector<vector<pair<Property*,proposition *> > > gathered;
@@ -535,8 +723,7 @@ public:
 			else
 			{
 
-				/* Generally we should ascend the entire hierarchy looking for fluents.
-				*/
+				// Generally we should ascend the entire hierarchy looking for fluents.
 				const pddl_type * ttp = (*ps)->type;
 				while(ttp)
 				{

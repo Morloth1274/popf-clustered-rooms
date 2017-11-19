@@ -26,12 +26,15 @@
 
 #ifndef __SIMPLE_EVALUATOR
 #define __SIMPLE_EVALUATOR
+#include <ros/ros.h>
 #include "VisitController.h"
 #include "FastEnvironment.h"
 #include <map>
 #include <vector>
 #include <set>
 #include <ptree.h>
+#include <mongodb_store/message_store.h>
+#include <nav_msgs/OccupancyGrid.h>
 
 namespace VAL {
 
@@ -42,7 +45,7 @@ namespace VAL {
 namespace Inst {
 
 typedef std::set<VAL::pred_symbol *> IState0Arity;
-typedef std::map<VAL::pred_symbol *,vector<VAL::parameter_symbol_list*> > IState;
+typedef std::map<const VAL::pred_symbol *,vector<VAL::parameter_symbol_list*> > IState;
 
 
 
@@ -79,15 +82,25 @@ protected:
 	friend class LitStoreEvaluator;
 	static IState initState;
 	static IState0Arity init0State;
+	static nav_msgs::OccupancyGrid grid;
+	static bool grid_initialised;
+private:
+	//static ros::NodeHandle nh;
+	//static mongodb_store::MessageStoreProxy messageStore;
+	//static bool ros_initiated;
 public:
 	InitialStateEvaluator(bool & v,bool & u, bool & w, bool & x):
 		PrimitiveEvaluator(v,u,w,x)
-	{};
+	{
+		
+	};
 	static void setInitialState();
+	static void receiveMap(const nav_msgs::OccupancyGrid::ConstPtr& msg);
 	virtual void evaluateSimpleGoal(VAL::FastEnvironment * f,VAL::simple_goal * s);
 };
 
 typedef PrimitiveEvaluatorConstructor<InitialStateEvaluator> ISC;
+
 
 class SimpleEvaluator : public VAL::VisitController {
 protected:

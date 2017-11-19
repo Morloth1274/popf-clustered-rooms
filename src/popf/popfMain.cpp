@@ -52,6 +52,7 @@
 #include <sys/unistd.h>
 
 #include <sstream>
+#include <ros/ros.h>
 
 using std::ifstream;
 using std::cerr;
@@ -131,7 +132,8 @@ string threeDP(double d)
 
 int main(int argc, char * argv[])
 {
-
+	ros::init(argc, argv, "popf");
+	//ros::NodeHandle nh("popf");
     FAverbose = false;
 
     int argcount = 1;

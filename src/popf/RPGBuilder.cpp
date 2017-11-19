@@ -888,6 +888,15 @@ public:
         }
         Literal * const addLit = instantiatedOp::findLiteral(l);
         if (!addLit) {
+			  
+			  std::cout << "Couldnot find the literal :(." << std::endl;
+			  for (LiteralStore::iterator i = instantiatedOp::literalsBegin(); i != instantiatedOp::literalsEnd(); ++i)
+			  {
+				  Literal* l = *i;
+				  l->write(std::cout);
+				  std::cout << std::endl;
+			  }
+			  
             if (adding) {
                 addToList.push_back(addLit);
                 if (debug) cout << "\t\tNull\n";
@@ -2282,12 +2291,26 @@ bool checkIfRogue(TimedPrecEffCollector & c)
 
 void RPGBuilder::initialise()
 {
+	std::cout << "[RPGBuilder::initialise] Set the initial state..." << std::endl;
+	
+	std::cout << "Existing literals..." << std::endl;
+	for (LiteralStore::iterator i = instantiatedOp::literalsBegin(); i != instantiatedOp::literalsEnd(); ++i)
+	{
+		Literal* l = *i;
+		l->write(std::cout);
+		std::cout << std::endl;
+	}
+	
     RPGdebug = (Globals::globalVerbosity & 16);
     SimpleEvaluator::setInitialState();
+	 std::cout << "[RPGBuilder::initialise] Initial state is set!" << std::endl;
     for (operator_list::const_iterator os = current_analysis->the_domain->ops->begin();
             os != current_analysis->the_domain->ops->end(); ++os) {
-        if (RPGdebug) cout << (*os)->name->getName() << "\n";
-        instantiatedOp::instantiate(*os, current_analysis->the_problem, *theTC);
+		 
+		 const VAL::operator_* op = *os;
+		 
+		  std::cout << "[RPGBuilder::initialise] Initialise the operator: " << op->name->getName()  << std::endl;
+        instantiatedOp::instantiate(op, current_analysis->the_problem, *theTC);
         if (RPGdebug) cout << instantiatedOp::howMany() << " so far\n";
     };
     if (RPGdebug && Globals::globalVerbosity & 65536) cout << instantiatedOp::howMany() << "\n";

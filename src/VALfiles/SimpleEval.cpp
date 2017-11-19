@@ -24,10 +24,15 @@
  *
  ************************************************************************/
 
+#include <geometry_msgs/PoseStamped.h>
+#include <squirrel_navigation_msgs/ClutterPlannerSrv.h>
 #include "SimpleEval.h"
 #include "TypedAnalyser.h"
 #include "instantiation.h"
 #include "typecheck.h"
+#include "parsing/ptree.h"
+#include "ToFunction.h"
+#include <vector>
 
 using namespace VAL;
 
@@ -37,12 +42,141 @@ bool SimpleEvaluator::verbose = false;
 
 IState InitialStateEvaluator::initState;
 IState0Arity InitialStateEvaluator::init0State;
+nav_msgs::OccupancyGrid InitialStateEvaluator::grid;
+bool InitialStateEvaluator::grid_initialised = false;
 
+//ros::NodeHandle InitialStateEvaluator::nh("popf");
+//mongodb_store::MessageStoreProxy InitialStateEvaluator::messageStore(nh);
+//bool InitialStateEvaluator::ros_initiated = false;
 
+void InitialStateEvaluator::receiveMap(const nav_msgs::OccupancyGrid::ConstPtr& msg)
+{
+	std::cout << "InitialStateEvaluator::receiveMap" << std::endl;
+	grid = *msg;
+	grid_initialised = true;
+}
+
+// Bram: Change this function.
 void InitialStateEvaluator::setInitialState()
 {
+	ros::NodeHandle nh("popf");
+	ros::Subscriber sub = nh.subscribe("/complete_grid", 1, &InitialStateEvaluator::receiveMap);
+	
+	std::cout << "InitialStateEvaluator::setInitialState() - waiting for the static map te become available." << std::endl;
+	while (!grid_initialised)
+	{
+		ros::spinOnce();
+	}
+	
+	std::cout << "InitialStateEvaluator::setInitialState() - static map is now available!" << std::endl;
+	
+	mongodb_store::MessageStoreProxy messageStore(nh);
+	ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("clutter_service");
+	
 	initState.clear();
 	init0State.clear();
+	
+	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
+	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
+	
+	//mongodb_store::MessageStoreProxy messageStore(*nh);
+	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
+	{
+		VAL::const_symbol* s = *ci;
+		if (s->type->getName() == "waypoint")
+		{
+			for (const_symbol_list::const_iterator ci2 = current_analysis->the_problem->objects->begin(); ci2 != current_analysis->the_problem->objects->end(); ++ci2)
+			{
+				VAL::const_symbol* s2 = *ci2;
+				if (s2->type->getName() == "waypoint")
+				{
+					// Check if these two waypoints are connected.s
+					std::cout << "Are " << s->getName() << " and " << s2->getName() << " connected?" << std::endl;
+					
+					geometry_msgs::PoseStamped wp1_loc;
+					{
+						std::vector<boost::shared_ptr<geometry_msgs::PoseStamped> >results;
+						if (!messageStore.queryNamed<geometry_msgs::PoseStamped>(s->getName(), results) || results.empty())
+						{
+							std::cerr << "Could not query the message store for the waypoint: " << s->getName().c_str() << std::endl;
+							exit(1);
+						}
+						wp1_loc = *results[0];
+					}
+					
+					geometry_msgs::PoseStamped wp2_loc;
+					{
+						std::vector<boost::shared_ptr<geometry_msgs::PoseStamped> >results;
+						if (!messageStore.queryNamed<geometry_msgs::PoseStamped>(s2->getName(), results) || results.empty())
+						{
+							std::cout << "Could not query the message store for the waypoint: " <<  s2->getName().c_str() << std::endl;
+							exit(1);
+						}
+						wp2_loc = *results[0];
+					}
+					
+					// Now we can call the pathplanner to initialise the initial state.
+					std::cout << s->getName() << " = (" << wp1_loc.pose.position.x << ", " << wp1_loc.pose.position.y << ", " << wp1_loc.pose.position.z << ")" << std::endl;
+					std::cout << s2->getName() << " = (" << wp2_loc.pose.position.x << ", " << wp2_loc.pose.position.y << ", " << wp2_loc.pose.position.z << ")" << std::endl;
+					
+					std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
+					
+					squirrel_navigation_msgs::ClutterPlannerSrv srv;
+					srv.request.goal = wp2_loc;
+					srv.request.start = wp1_loc;
+					srv.request.obstacles_in = objects;
+					srv.request.grid = grid;
+					
+					if (client.call(srv))
+					{
+						std::cout << "Connected: " << s->getName() << " -> " << s2->getName() << std::endl;
+					} else {
+						std::cout << "Not connected: " << s->getName() << " -> " << s2->getName() << std::endl;
+					}
+					
+					// Create a literal for this.
+					pred_symbol * p = current_analysis->pred_tab.symbol_get("connected");
+					std::cout << "Found predicate symbol at: " << p << std::endl;
+					
+					holding_pred_symbol* hps = dynamic_cast<holding_pred_symbol*>(p);
+					
+					std::cout << " ===== Exising extended pred symbol ===== Address: " << hps << std::endl;
+					
+					for (holding_pred_symbol::PIt pit = hps->pBegin(); pit != hps->pEnd(); ++pit)
+					{
+						extended_pred_symbol* eps = *pit;
+						std::cout << "\tProcess: " << eps->getName() << " (" << eps << ")" << std::endl;
+					}
+					
+					// Lookup the extended predicate symbol with the correct types.
+					std::vector<VAL::pddl_type*> pddl_types;
+					pddl_types.push_back(s->type);
+					pddl_types.push_back(s2->type);
+					extended_pred_symbol* eps = hps->find<std::vector<VAL::pddl_type*>::const_iterator>(p, pddl_types.begin(), pddl_types.end());
+					
+					std::cout << "\tFound the pred symbol: " << eps->getName() << " (" << eps << ")" << std::endl;
+					
+					std::cout << "Initialise the initial state for: " << p->getName() << std::endl;
+					parameter_symbol_list* var_list = new parameter_symbol_list();
+					var_list->push_back(s);
+					var_list->push_back(s2);
+					
+					current_analysis->the_domain->predicates;
+					
+					// Probably should not make a new proposition, but look it up from the grounded actions (wherever they are!).
+					proposition* prop = new proposition(eps, var_list);
+					
+					/// This does not work.
+					eps->setInitial(prop);
+					
+					simple_effect* se = new simple_effect(prop);
+					current_analysis->the_problem->initial_state->add_effects.push_back(se);
+
+					std::cout << "Insert " << prop->head->getName() << " (" << prop->head << ") Into the initial state!" << std::endl;
+				}
+			}
+		}
+	}
 	
 	for(pc_list<simple_effect*>::const_iterator i = 
 				current_analysis->the_problem->initial_state->add_effects.begin();
@@ -52,14 +186,31 @@ void InitialStateEvaluator::setInitialState()
 		{
 			// Arity 0...
 			init0State.insert((*i)->prop->head);
-
 		}
 		else
 		{
-			//cout << "Recording " << (*i)->prop->head->getName() << "-stemmed fact in the initial state, ptr " << (*i)->prop->head << "\n";
+			std::cout << "Insert " << (*i)->prop->head->getName() << " (" << (*i)->prop->head << ") Into the initial state!" << std::endl;
 			initState[(*i)->prop->head].push_back((*i)->prop->args);
 		};
 	};
+	
+	std::cout << "Post state..." << std::endl;
+	for (IState::const_iterator ci = initState.begin(); ci != initState.end(); ++ci)
+	{
+		const vector<VAL::parameter_symbol_list*>& vpsl = ci->second;
+		for (std::vector<VAL::parameter_symbol_list*>::const_iterator ci2 = vpsl.begin(); ci2 != vpsl.end(); ++ci2)
+		{
+			std::cout << "\t(" << ci->first->getName();
+			const VAL::parameter_symbol_list* psl = *ci2;
+			for (VAL::parameter_symbol_list::const_iterator ci3 = psl->begin(); ci3 != psl->end(); ++ci3)
+			{
+				std::cout << " ";// << (*ci3)->getName();
+				
+				(*ci3)->write(std::cout);
+			}
+			std::cout << ")" << std::endl;
+		}
+	}
 };
 
 void InitialStateEvaluator::evaluateSimpleGoal(FastEnvironment * f,simple_goal * s)

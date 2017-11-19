@@ -2848,6 +2848,12 @@ int RPGHeuristic::getRelaxedPlan(const MinimalState & theState, const vector<dou
     static const double EPSILON = 0.001;
     bool evaluateDebug = Globals::globalVerbosity & 64;
 
+	 	if (evaluateDebug)
+		{
+			cout << "RPGHeuristic::getRelaxedPlan" << std::endl;
+			cout << "theState: " << theState << std::cout;
+		}
+	 
     d->setDebugFlag(evaluateDebug);
 
     d->populateActionFluentLookupTable();
