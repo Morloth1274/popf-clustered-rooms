@@ -96,6 +96,7 @@ public:
 	};
 	static void setInitialState();
 	static void receiveMap(const nav_msgs::OccupancyGrid::ConstPtr& msg);
+	static nav_msgs::OccupancyGrid& getGrid() { return grid; }
 	virtual void evaluateSimpleGoal(VAL::FastEnvironment * f,VAL::simple_goal * s);
 };
 

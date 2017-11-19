@@ -1823,7 +1823,7 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
                 cout << "[instantiatedOp::instantiate] Instatiated: " << *o << std::endl;
                 delete o;
             }
-
+            cout << "[instantiatedOp::instantiate] Not instantiated! " << *o << std::endl;
         } else {
             cout << "[instantiatedOp::instantiate] This action will never become true, ignoring." << std::endl;
         }

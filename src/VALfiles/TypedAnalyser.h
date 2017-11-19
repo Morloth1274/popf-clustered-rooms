@@ -690,7 +690,8 @@ public:
 		
 	bool appearsStatic() const
 	{
-		return isStatic() && timedInitials.empty();
+		return false;
+		//return isStatic() && timedInitials.empty();
 	};
 	
 	bool decays() const {

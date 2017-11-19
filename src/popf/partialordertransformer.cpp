@@ -25,6 +25,11 @@
  *
  ************************************************************************/
 
+#include <ros/ros.h>
+#include <mongodb_store/message_store.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <squirrel_navigation_msgs/ClutterPlannerSrv.h>
 
 #include "partialordertransformer.h"
 #include "temporalconstraints.h"
@@ -52,78 +57,170 @@ TemporalConstraints * PartialOrderTransformer::emptyTemporalConstraints()
 // Bram: to change.
 void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment & a, StepAndBeforeOrAfter stepBA)
 {
-	/*
-	std::cout << "****[POTHelper_updateForPathfinder]" << std::endl;
-	theState.printState(std::cout);
-	std::cout << std::endl;
+	const unsigned int stepID = stepBA.stepID;
+	const PropositionAnnotation afterNow(stepID);
+	
+	// If an action was executed that could change the location of the objects we need to recheck the connectivity
+	// of all waypoints in the domain.
+	//std::cout << "****[POTHelper_updateForPathfinder] For action: " << a.first->forOp()->name->getName() << std::endl;
+	
+	//a.first->writeAllLiterals(std::cout);
+	//std::cout << std::endl;
+	
+	//theState.printState(std::cout);
+	//std::cout << std::endl;
+	
 	// Check which action was called and call the path planner to update the connected properties.
-	if (a.first->forOp()->name->getName() == "push")
+	if (a.first->forOp()->name->getName() == "push_object")
 	{
-		// Create all literals that are related to 'connected to'.
+		ros::NodeHandle nh("popf");
+		mongodb_store::MessageStoreProxy messageStore(nh);
+		ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("clutter_service");
 		
-		list<Literal*>::iterator effItr = addEffs.begin();
-		const list<Literal*>::iterator effEnd = addEffs.end();
-
-		const PropositionAnnotation afterNow(stepID);
-
-		for (; effItr != effEnd; ++effItr) {
-			const int litID = (*effItr)->getID();
-
-			bool previouslyDeleted = false;
-
+		// Create all literals that are related to 'connected to'.
+		for (VAL::const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
+		{
+			VAL::const_symbol* s = *ci;
+			if (s->type->getName() == "waypoint")
 			{
-					const map<int, PropositionAnnotation>::iterator stateItr = theState.retired.find(litID);
-					if (stateItr != theState.retired.end()) {
-						assert(theState.first.find(litID) == theState.first.end());
-						previouslyDeleted = true;
+				for (VAL::const_symbol_list::const_iterator ci2 = current_analysis->the_problem->objects->begin(); ci2 != current_analysis->the_problem->objects->end(); ++ci2)
+				{
+					bool previouslyDeleted = false;
+					VAL::const_symbol* s2 = *ci2;
+					if (s2->type->getName() == "waypoint")
+					{
+						// Check if these two waypoints are connected.s
+						//std::cout << "Are " << s->getName() << " and " << s2->getName() << " connected?" << std::endl;
+						
+						geometry_msgs::PoseStamped wp1_loc;
 						{
-							const StepAndBeforeOrAfter deletedAt = stateItr->second.negativeAvailableFrom;
-							assert(!deletedAt.never());
+							std::vector<boost::shared_ptr<geometry_msgs::PoseStamped> >results;
+							if (!messageStore.queryNamed<geometry_msgs::PoseStamped>(s->getName(), results) || results.empty())
+							{
+								std::cerr << "Could not query the message store for the waypoint: " << s->getName().c_str() << std::endl;
+								exit(1);
+							}
+							wp1_loc = *results[0];
+						}
+						
+						geometry_msgs::PoseStamped wp2_loc;
+						{
+							std::vector<boost::shared_ptr<geometry_msgs::PoseStamped> >results;
+							if (!messageStore.queryNamed<geometry_msgs::PoseStamped>(s2->getName(), results) || results.empty())
+							{
+								std::cout << "Could not query the message store for the waypoint: " <<  s2->getName().c_str() << std::endl;
+								exit(1);
+							}
+							wp2_loc = *results[0];
+						}
+						
+						// Now we can call the pathplanner to initialise the initial state.
+						//std::cout << s->getName() << " = (" << wp1_loc.pose.position.x << ", " << wp1_loc.pose.position.y << ", " << wp1_loc.pose.position.z << ")" << std::endl;
+						//std::cout << s2->getName() << " = (" << wp2_loc.pose.position.x << ", " << wp2_loc.pose.position.y << ", " << wp2_loc.pose.position.z << ")" << std::endl;
+						
+						std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
+						
+						squirrel_navigation_msgs::ClutterPlannerSrv srv;
+						srv.request.goal = wp2_loc;
+						srv.request.start = wp1_loc;
+						srv.request.obstacles_in = objects;
+						srv.request.grid = InitialStateEvaluator::getGrid();
+						
+						if (client.call(srv))
+						{
+							//std::cout << "Connected: " << s->getName() << " -> " << s2->getName() << std::endl;
+						} else {
+							//std::cout << "Not connected: " << s->getName() << " -> " << s2->getName() << std::endl;
+						}
+						
+						// Create a literal for this.
+						pred_symbol * p = current_analysis->pred_tab.symbol_get("connected");
+						
+						VAL::holding_pred_symbol* hps = dynamic_cast<VAL::holding_pred_symbol*>(p);
+						
+						// Lookup the extended predicate symbol with the correct types.
+						std::vector<VAL::pddl_type*> pddl_types;
+						pddl_types.push_back(s->type);
+						pddl_types.push_back(s2->type);
+						VAL::extended_pred_symbol* eps = hps->find<std::vector<VAL::pddl_type*>::const_iterator>(p, pddl_types.begin(), pddl_types.end());
+						
+						VAL::parameter_symbol_list* var_list = new VAL::parameter_symbol_list();
+						var_list->push_back(s);
+						var_list->push_back(s2);
+						
+						// Probably should not make a new proposition, but look it up from the grounded actions (wherever they are!).
+						VAL::proposition* prop = new VAL::proposition(eps, var_list);
+						
+						// Need to get the literal!
+						// Find the literal.
+						Literal* l = new Literal(prop, a.first->getEnv());
+						//std::cout << "Constructed the literal: ";
+						//l->write(std::cout);
+						//std::cout << std::endl;
+						
+						Literal* real_l = instantiatedOp::findLiteral(l);
+						
+						//std::cout << "Which maps to the literal: ";
+						if (real_l == nullptr)
+						{
+							/*
+							std::cout << "Nothing!" << std::endl;
+							for (auto ci = instantiatedOp::literalsBegin(); ci != instantiatedOp::literalsEnd(); ++ci)
+							{
+								(*ci)->write(std::cout);
+								std::cout << " (" << *ci << ")" << std::endl;
+							}
+							*/
+							continue;
+						}/* else {
+							real_l->write(std::cout);
+							std::cout << std::endl;
+						}*/
+						
+						int litID = real_l->getID();
+						//std::cout << "The ID is: " << litID << std::endl;
+						
+						const map<int, PropositionAnnotation>::iterator stateItr = theState.retired.find(litID);
+						if (stateItr != theState.retired.end()) {
+							assert(theState.first.find(litID) == theState.first.end());
+							previouslyDeleted = true;
+							{
+								const StepAndBeforeOrAfter deletedAt = stateItr->second.negativeAvailableFrom;
+								assert(!deletedAt.never());
 
-							if (deletedAt.stepID != stepID) {
-									theState.temporalConstraints->addOrdering(deletedAt.stepID, stepID, (deletedAt.beforeOrAfter == StepAndBeforeOrAfter::AFTER));
+								if (deletedAt.stepID != stepID) {
+										theState.temporalConstraints->addOrdering(deletedAt.stepID, stepID, (deletedAt.beforeOrAfter == StepAndBeforeOrAfter::AFTER));
+								}
+									//cout << "\t" << *real_l << " had previously been deleted " << deletedAt;
 							}
 
-							if (applyDebug) {
-									cout << "\t" << *(*effItr) << " had previously been deleted " << deletedAt;
+							PropositionAnnotation & toUpdate = theState.first.insert(*stateItr).first->second;
+							toUpdate.markAsAdded(stepBA);
+							theState.retired.erase(stateItr);
+
+							//cout << ", and is now available from " << stepBA << "\n";
+						}
+
+						if (!previouslyDeleted) {
+							const pair<map<int, PropositionAnnotation>::iterator, bool> stateItrPair = theState.first.insert(make_pair(litID, afterNow));
+
+							if (!stateItrPair.second) { // if we haven't just added it (i.e. it was there already)
+								if (stateItrPair.first->second.availableFrom.stepID || stateItrPair.first->second.availableFrom.beforeOrAfter == StepAndBeforeOrAfter::AFTER) {
+									//cout << "\t" << *real_l << " used to be available from step " << stateItrPair.first->second.availableFrom.stepID << ", adding ordering constraint\n";
+									theState.temporalConstraints->addOrdering(stateItrPair.first->second.availableFrom.stepID, stepID, false);
+								}
+								stateItrPair.first->second.availableFrom.stepID = stepID; // override when it's available from
+								stateItrPair.first->second.availableFrom.beforeOrAfter = StepAndBeforeOrAfter::AFTER; // ...  to after now
+
 							}
 
+							//cout << "\t" << *real_l << " is brand new and available from " << stepBA << "\n";
 						}
-
-						PropositionAnnotation & toUpdate = theState.first.insert(*stateItr).first->second;
-						toUpdate.markAsAdded(stepBA);
-						theState.retired.erase(stateItr);
-
-						if (applyDebug) {
-							cout << ", and is now available from " << stepBA << "\n";
-						}
-
 					}
-
-			}
-
-			if (!previouslyDeleted) {
-					const pair<map<int, PropositionAnnotation>::iterator, bool> stateItrPair = theState.first.insert(make_pair(litID, afterNow));
-
-					if (!stateItrPair.second) { // if we haven't just added it (i.e. it was there already)
-						if (stateItrPair.first->second.availableFrom.stepID || stateItrPair.first->second.availableFrom.beforeOrAfter == StepAndBeforeOrAfter::AFTER) {
-							if (applyDebug) {
-									cout << "\t" << *(*effItr) << " used to be available from step " << stateItrPair.first->second.availableFrom.stepID << ", adding ordering constraint\n";
-							}
-							theState.temporalConstraints->addOrdering(stateItrPair.first->second.availableFrom.stepID, stepID, false);
-						}
-						stateItrPair.first->second.availableFrom.stepID = stepID; // override when it's available from
-						stateItrPair.first->second.availableFrom.beforeOrAfter = StepAndBeforeOrAfter::AFTER; // ...  to after now
-
-					}
-
-					if (applyDebug) {
-						cout << "\t" << *(*effItr) << " is brand new and available from " << stepBA << "\n";
-					}
+				}
 			}
 		}
 	}
-	*/
 }
 
 void POTHelper_updateForInstantaneousEffects(MinimalState & theState, const StepAndBeforeOrAfter & stepBA, list<Literal*> & delEffs, list<Literal*> & addEffs)
@@ -837,12 +934,12 @@ static unsigned int oldStepCount;
 
 MinimalState & PartialOrderTransformer::applyAction(MinimalState & theStateHidden, const ActionSegment & a, const bool & inPlace, const double & minDur, const double & maxDur)
 {
-	std::cout << "[PartialOrderTransformer::applyAction] " << std::endl;
-	std::cout << "The hidden state " << std::endl;
-	theStateHidden.printState(std::cout);
-	std::cout << "The action segment" << std::endl;
-	a.first->write(std::cout);
-	std::cout << std::endl;
+	//std::cout << "[PartialOrderTransformer::applyAction] " << std::endl;
+	//std::cout << "The hidden state " << std::endl;
+	//theStateHidden.printState(std::cout);
+	//std::cout << "The action segment" << std::endl;
+	//a.first->write(std::cout);
+	//std::cout << std::endl;
 	applyDebug = Globals::globalVerbosity & 1048576;
 
 	unsigned int extensionNeeded = 0;
@@ -917,7 +1014,7 @@ MinimalState & PartialOrderTransformer::applyAction(MinimalState & theStateHidde
 
 				list<Literal*> & delEffs = RPGBuilder::getStartPropositionDeletes()[actID];
 				list<Literal*> & addEffs = RPGBuilder::getStartPropositionAdds()[actID];
-				std::cout << "[PartialOrderTransformer::applyAction] applying non-temporal effects." << std::endl;
+				//std::cout << "[PartialOrderTransformer::applyAction] applying non-temporal effects." << std::endl;
 				POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength), delEffs, addEffs);
 
 				{
@@ -929,7 +1026,7 @@ MinimalState & PartialOrderTransformer::applyAction(MinimalState & theStateHidde
 				}
 
 				POTHelper_updateForOutputsFromInstantaneousNumericEffects(*workOn, workOn->planLength, RPGBuilder::getStartEffNumerics()[actID], minDur, maxDur);
-
+				POTHelper_updateForPathfinder(*workOn, a, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, workOn->planLength));
 				workOn->temporalConstraints->setMostRecentStep(workOn->planLength);
 
 				++workOn->planLength;
@@ -1098,7 +1195,6 @@ MinimalState & PartialOrderTransformer::applyAction(MinimalState & theStateHidde
 
 		std::cout << "[PartialOrderTransformer::applyAction] Recording end effects." << std::endl;
 		POTHelper_updateForInstantaneousEffects(*workOn, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID), delEffs, addEffs);
-		POTHelper_updateForPathfinder(*workOn, a, StepAndBeforeOrAfter(StepAndBeforeOrAfter::AFTER, endStepID));
 	}
 
 	{

@@ -78,7 +78,7 @@ void InitialStateEvaluator::setInitialState()
 	
 	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
 	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
-	
+	/*
 	//mongodb_store::MessageStoreProxy messageStore(*nh);
 	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
 	{
@@ -161,12 +161,7 @@ void InitialStateEvaluator::setInitialState()
 					var_list->push_back(s);
 					var_list->push_back(s2);
 					
-					current_analysis->the_domain->predicates;
-					
-					// Probably should not make a new proposition, but look it up from the grounded actions (wherever they are!).
 					proposition* prop = new proposition(eps, var_list);
-					
-					/// This does not work.
 					eps->setInitial(prop);
 					
 					simple_effect* se = new simple_effect(prop);
@@ -177,7 +172,7 @@ void InitialStateEvaluator::setInitialState()
 			}
 		}
 	}
-	
+	*/
 	for(pc_list<simple_effect*>::const_iterator i = 
 				current_analysis->the_problem->initial_state->add_effects.begin();
 				i != current_analysis->the_problem->initial_state->add_effects.end();++i)

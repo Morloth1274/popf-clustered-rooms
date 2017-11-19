@@ -921,7 +921,7 @@ void removeFirst(list<pair<int, VAL::time_spec> > & from, const pair<int, VAL::t
 
 bool RPGBuilder::considerAndFilter(LiteralSet & initialState, LiteralSet & revisit, const int & operatorID)
 {
-
+	return false;
 
     bool localDebug = (Globals::globalVerbosity & 131072);
 
@@ -1423,15 +1423,18 @@ void RPGBuilder::findActionTimestampLowerBounds()
                 TemporalAnalysis::suggestNewStartLowerBound(a, earliestStart);
                 TemporalAnalysis::suggestNewEndLowerBound(a, earliestEnd);
 
-                isRogue = TemporalAnalysis::actionIsNeverApplicable(a);
+					 // Ignore pruning!
+                //isRogue = TemporalAnalysis::actionIsNeverApplicable(a);
 
                 if (isRogue) {
                     cout << "Pruning " << *(getInstantiatedOp(a)) << " - temporal contradiction\n";
                 }
-            } else {
+            }
+            // Ignore pruning!
+            /* else {
                 cout << "Pruning " << *(getInstantiatedOp(a)) << " - never appeared in initial RPG\n";
                 isRogue = true;
-            }
+            }*/
 
             if (isRogue) {
 
@@ -1842,8 +1845,9 @@ public:
 
 void RPGBuilder::pruneIrrelevant(const int & operatorID)
 {
-
-    #ifdef ENABLE_DEBUGGING_HOOKS
+	std::cout << "Blocking pruning!" << std::endl;
+	return;
+	 #ifdef ENABLE_DEBUGGING_HOOKS
     Globals::eliminatedAction(operatorID, "No reason known - has been passed to pruneIrrelevant");
     #endif
     
@@ -2179,6 +2183,7 @@ void RPGBuilder::postFilterIrrelevantActions()
         }
     }
 
+    /*
     for (int i = 0; i < opCount; ++i) {
         if (!rogueActions[i] && data.opNeverApplied(i)) {
             
@@ -2194,6 +2199,7 @@ void RPGBuilder::postFilterIrrelevantActions()
 
         }
     }
+    */
 
     for (int i = 0; i < opCount; ++i) {
         if (!rogueActions[i]) {
