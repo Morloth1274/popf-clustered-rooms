@@ -83,7 +83,7 @@ map<VAL::pddl_type *,vector<VAL::const_symbol*> > instantiatedOp::values;
 
 void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * prb,VAL::TypeChecker & tc)
 {
-	std::cout << "[instantiatedOp::instantiate] Instantiate the operator " << op->name->getName() << std::endl;
+	//std::cout << "[instantiatedOp::instantiate] Instantiate the operator " << op->name->getName() << std::endl;
 	FastEnvironment e(static_cast<const id_var_symbol_table*>(op->symtab)->numSyms());
 	vector<vector<VAL::const_symbol*>::const_iterator> vals(op->parameters->size());
 	vector<vector<VAL::const_symbol*>::const_iterator> starts(op->parameters->size());
@@ -105,13 +105,13 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 		vars[i] = *p;
 		c *= values[(*p)->type].size();
 	};
-	cout << "[instantiatedOp::instantiate] " << c << " candidates to consider" << std::endl;
+	//cout << "[instantiatedOp::instantiate] " << c << " candidates to consider" << std::endl;
 	if(!i)
 	{
 		SimpleEvaluator se(&e);
 		op->visit(&se);
 		
-		cout << "[instantiatedOp::instantiate] " << op->name->getName() << " visited." << std::endl;
+		//cout << "[instantiatedOp::instantiate] " << op->name->getName() << " visited." << std::endl;
 		
 		if(!se.reallyFalse())
 		{
@@ -124,7 +124,7 @@ void instantiatedOp::instantiate(const VAL::operator_ * op,const VAL::problem * 
 		}
 		else
 		{
-			cout << "[instantiatedOp::instantiate] " << op->name->getName() << " is not applicable!" << std::endl;
+			//cout << "[instantiatedOp::instantiate] " << op->name->getName() << " is not applicable!" << std::endl;
 		}
 		return;
 	};

@@ -1727,7 +1727,7 @@ public:
      *  @see rollover
      */
     void next() {
-        static const bool debug = true;
+        static const bool debug = false;
 
         static int x;
         x = 0;
@@ -1782,7 +1782,7 @@ PDCIterator* ParameterDomainConstraints::getIterator()
 
 void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem * prb, VAL::TypeChecker & tc)
 {
-    std::cout << "[instantiatedOp::instantiate] Instantiate the operator: " << op->name->getName() << std::endl;
+    //std::cout << "[instantiatedOp::instantiate] Instantiate the operator: " << op->name->getName() << std::endl;
     FastEnvironment e(static_cast<const id_var_symbol_table*>(op->symtab)->numSyms());
 
     const int opParamCount = op->parameters->size();
@@ -1797,7 +1797,7 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
 
             for (; pItr != pEnd; ++pItr) {
                 if (*pItr == insistOnOpParameters[p]) {
-                    std::cout << "\tFound appropriate possibility for parameter " << (p + 1) << std::endl;
+                    //std::cout << "\tFound appropriate possibility for parameter " << (p + 1) << std::endl;
                     break;
                 }
             }
@@ -1813,19 +1813,19 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
 
     SimpleEvaluator se(&tc, 0, ISC());
     if (!opParamCount) {
-        cout << "[instantiatedOp::instantiate] Instantiate action with no parameters." << std::endl;
+        //cout << "[instantiatedOp::instantiate] Instantiate action with no parameters." << std::endl;
         se.prepareForVisit(&e);
         op->visit(&se);
         if (!se.reallyFalse()) {
             FastEnvironment * ecpy = e.copy();
             instantiatedOp * o = new instantiatedOp(op, ecpy);
             if (instOps.insert(o)) {
-                cout << "[instantiatedOp::instantiate] Instatiated: " << *o << std::endl;
+                //cout << "[instantiatedOp::instantiate] Instatiated: " << *o << std::endl;
                 delete o;
             }
-            cout << "[instantiatedOp::instantiate] Not instantiated! " << *o << std::endl;
+            //cout << "[instantiatedOp::instantiate] Not instantiated! " << *o << std::endl;
         } else {
-            cout << "[instantiatedOp::instantiate] This action will never become true, ignoring." << std::endl;
+            //cout << "[instantiatedOp::instantiate] This action will never become true, ignoring." << std::endl;
         }
         return;
     };
@@ -1843,36 +1843,36 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
 
     auto_ptr<PDCIterator> options(pdc.getIterator());
 
-    cout << "[instantiatedOp::instantiate] Start instantiating all possible actions." << std::endl;
+    //cout << "[instantiatedOp::instantiate] Start instantiating all possible actions." << std::endl;
     while (options->isValid()) {
         
-        cout << "[instantiatedOp::instantiate] Consider: (" << op->name->getName();
+        //cout << "[instantiatedOp::instantiate] Consider: (" << op->name->getName();
         for (int x = 0; x < opParamCount; ++x) {
             e[vars[x]] = (*options)[x];
             
-            std::cout << " " << e[vars[x]]->getName();
+            //std::cout << " " << e[vars[x]]->getName();
         }
-        std::cout << ")" << std::endl;
+        //std::cout << ")" << std::endl;
         
         
         if (!TIM::selfMutex(op, makeIterator(&e, op->parameters->begin()),
                             makeIterator(&e, op->parameters->end()))) {
-            cout << "[instantiatedOp::instantiate] Not self mutex." << std::endl;
+            //cout << "[instantiatedOp::instantiate] Not self mutex." << std::endl;
             se.prepareForVisit(&e);
             const_cast<VAL::operator_*>(op)->visit(&se);
             if (!se.reallyFalse()) {
                 FastEnvironment * ecpy = e.copy();
                 instantiatedOp * o = new instantiatedOp(op, ecpy);
                 if (instOps.insert(o)) {
-                    cout << "[instantiatedOp::instantiate] Was already part of the set!" << std::endl;
+                    //cout << "[instantiatedOp::instantiate] Was already part of the set!" << std::endl;
                     delete o;
                 } else {
-                    cout << "[instantiatedOp::instantiate] Added as a new operator." << std::endl;
+                    //cout << "[instantiatedOp::instantiate] Added as a new operator." << std::endl;
                 }
             }
 #ifndef NDEBUG
             else if (insistOnOp && insistOnOp == op) {
-                cout << "[instantiatedOp::instantiate] Not accepted, but insist to create it anyway!" << std::endl;
+                //cout << "[instantiatedOp::instantiate] Not accepted, but insist to create it anyway!" << std::endl;
                 bool allMatched = true;
                 int p = 0;
                 for (var_symbol_list::const_iterator a = op->parameters->begin();
@@ -1893,7 +1893,7 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
                     exit(1);
                 }
             } else {
-                cout << "[instantiatedOp::instantiate] Not accepted, moving on!" << std::endl;
+                //cout << "[instantiatedOp::instantiate] Not accepted, moving on!" << std::endl;
             }
 #endif
 
@@ -1911,12 +1911,12 @@ void instantiatedOp::instantiate(const VAL::operator_ * op, const VAL::problem *
             }
 
             if (allMatched) {
-                cout << "Decided that (" << op->name->getName();
+                //cout << "Decided that (" << op->name->getName();
                 for (var_symbol_list::const_iterator a = op->parameters->begin();
                         a != op->parameters->end();++a) {
                     cout << " " << e[*a]->getName();
                 };
-                cout << ") was self mutex\n";
+                //cout << ") was self mutex\n";
 
                 exit(1);
             }

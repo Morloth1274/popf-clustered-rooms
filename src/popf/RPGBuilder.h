@@ -719,8 +719,8 @@ public:
         }
 
         void push_back(Literal* const toAdd) {
-            std::cout << "[NoDuplicatePair::push_back] " << toAdd << std::endl;
-            std::cout << "The list is : " << first << " and " << second << std::endl;
+            //std::cout << "[NoDuplicatePair::push_back] " << toAdd << std::endl;
+            //std::cout << "The list is : " << first << " and " << second << std::endl;
             
             if (second->insert(toAdd).second) {
                 first->push_back(toAdd);

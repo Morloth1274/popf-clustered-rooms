@@ -98,9 +98,10 @@ CompoundPropStore::CompoundPropStore(int c,vector<pair<pddl_type *,vector<const 
 	
 PropStore * extended_pred_symbol::records() const
 {
-	std::cout << "[extended_pred_symbol::records()] Get the prop store. For: " << getName() << std::endl;
+	//std::cout << "[extended_pred_symbol::records()] Get the prop store. For: " << getName() << std::endl;
 	if(!props)
 	{
+		/*
 		std::cout << "The types are: " << std::endl;
 		for (Types::const_iterator ci = types.begin(); ci != types.end(); ++ci)
 		{
@@ -110,6 +111,7 @@ PropStore * extended_pred_symbol::records() const
 		}
 		// Parent == zero!!!!
 		std::cout << "[extended_pred_symbol::records()] Build prop store..." << std::endl;
+		*/
 		const_cast<extended_pred_symbol*>(this)->props =
 				parent->buildPropStore(const_cast<extended_pred_symbol*>(this),types.begin(),types.end());//types);
 	};
