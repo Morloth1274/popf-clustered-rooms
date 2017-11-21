@@ -56,11 +56,59 @@ void InitialStateEvaluator::receiveMap(const nav_msgs::OccupancyGrid::ConstPtr& 
 	grid_initialised = true;
 }
 
+bool InitialStateEvaluator::worldToMap(double wx, double wy, unsigned int& mx, unsigned int& my) {
+	if (wx < grid.info.origin.position.x || wy < grid.info.origin.position.y)
+		return false;
+
+	mx = (int) ((wx - grid.info.origin.position.x) / grid.info.resolution);
+	my = (int) ((wy - grid.info.origin.position.y) / grid.info.resolution);
+
+	if (mx < grid.info.width && my < grid.info.height)
+		return true;
+
+	return false;
+}
+
+void InitialStateEvaluator::fromRadiusToCellVector(const double& radius, squirrel_navigation_msgs::ObjectMSG& obj) {
+	int cell_radius = (ceil)(radius / grid.info.resolution);
+	for (int i = -cell_radius; i < cell_radius; ++i) {
+		for (int j = -cell_radius; j < cell_radius; ++j) {
+			if (i * i + j * j <= cell_radius * cell_radius) {
+				squirrel_navigation_msgs::CellMSG tmpCell;
+				tmpCell.mx = obj.center_cell.mx + i;
+				tmpCell.my = obj.center_cell.my + j;
+				obj.cell_vector.push_back(tmpCell);
+			}
+		}
+	}
+}
+
+void InitialStateEvaluator::transform(const squirrel_manipulation_msgs::GetObjectPositions& object_positions, std::vector<squirrel_navigation_msgs::ObjectMSG>& objects)
+{
+	objects.clear();
+	squirrel_navigation_msgs::ObjectMSG tmp;
+	for (unsigned int i = 0; i < object_positions.response.objectids.size(); ++i) {
+			tmp.uid = i;
+			tmp.center_wx = object_positions.response.objectposes[i].position.x;
+			tmp.center_wy = object_positions.response.objectposes[i].position.y;
+			unsigned int my, mx;
+			if (worldToMap(tmp.center_wx, tmp.center_wy, mx, my)) {
+					tmp.center_cell.mx = mx;
+					tmp.center_cell.my = my;
+					fromRadiusToCellVector(object_positions.response.diameters[i], tmp);
+			} else {
+					ROS_ERROR("SHOULD NOT HAPPEN IN GET OBJECT CLIENT WORLD TO MAP FAILED");
+			}
+			objects.push_back(tmp);
+	}
+	ROS_INFO("SIZE OF OBJECTS IN OBJECT_CLIENT %zu", objects.size());
+}
+
 // Bram: Change this function.
 void InitialStateEvaluator::setInitialState()
 {
 	ros::NodeHandle nh("popf");
-	ros::Subscriber sub = nh.subscribe("/complete_grid", 1, &InitialStateEvaluator::receiveMap);
+	ros::Subscriber sub = nh.subscribe("/map", 1, &InitialStateEvaluator::receiveMap);
 	
 	std::cout << "InitialStateEvaluator::setInitialState() - waiting for the static map te become available." << std::endl;
 	while (!grid_initialised)
@@ -72,6 +120,7 @@ void InitialStateEvaluator::setInitialState()
 	
 	mongodb_store::MessageStoreProxy messageStore(nh);
 	ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("clutter_service");
+	ros::ServiceClient find_objects_service = nh.serviceClient<squirrel_manipulation_msgs::GetObjectPositions>("/getObjectsPositions");
 	
 	initState.clear();
 	init0State.clear();
@@ -121,17 +170,27 @@ void InitialStateEvaluator::setInitialState()
 					
 					std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
 					
+					// Get all the objects.
+					squirrel_manipulation_msgs::GetObjectPositions op;
+					if (!find_objects_service.call(op))
+					{
+						ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
+						exit(1);
+					}
+					transform(op, objects);
+					
 					squirrel_navigation_msgs::ClutterPlannerSrv srv;
 					srv.request.goal = wp2_loc;
 					srv.request.start = wp1_loc;
 					srv.request.obstacles_in = objects;
 					srv.request.grid = grid;
 					
-					if (client.call(srv))
+					if (!client.call(srv))
 					{
-						std::cout << "Connected: " << s->getName() << " -> " << s2->getName() << std::endl;
-					} else {
 						std::cout << "Not connected: " << s->getName() << " -> " << s2->getName() << std::endl;
+						continue;
+					} else {
+						std::cout << "Connected: " << s->getName() << " -> " << s2->getName() << std::endl;
 					}
 					
 					// Create a literal for this.

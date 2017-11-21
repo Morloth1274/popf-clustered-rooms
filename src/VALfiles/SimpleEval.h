@@ -35,6 +35,8 @@
 #include <ptree.h>
 #include <mongodb_store/message_store.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <squirrel_manipulation_msgs/GetObjectPositions.h>
+#include <squirrel_navigation_msgs/ObjectMSG.h>
 
 namespace VAL {
 
@@ -88,6 +90,8 @@ private:
 	//static ros::NodeHandle nh;
 	//static mongodb_store::MessageStoreProxy messageStore;
 	//static bool ros_initiated;
+	static bool worldToMap(double wx, double wy, unsigned int& mx, unsigned int& my);
+	static void fromRadiusToCellVector(const double& radius, squirrel_navigation_msgs::ObjectMSG& obj);
 public:
 	InitialStateEvaluator(bool & v,bool & u, bool & w, bool & x):
 		PrimitiveEvaluator(v,u,w,x)
@@ -96,6 +100,7 @@ public:
 	};
 	static void setInitialState();
 	static void receiveMap(const nav_msgs::OccupancyGrid::ConstPtr& msg);
+	static void transform(const squirrel_manipulation_msgs::GetObjectPositions& object_positions, std::vector<squirrel_navigation_msgs::ObjectMSG>& objects);
 	static nav_msgs::OccupancyGrid& getGrid() { return grid; }
 	virtual void evaluateSimpleGoal(VAL::FastEnvironment * f,VAL::simple_goal * s);
 };

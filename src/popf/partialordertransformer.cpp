@@ -76,6 +76,7 @@ void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment 
 		ros::NodeHandle nh("popf");
 		mongodb_store::MessageStoreProxy messageStore(nh);
 		ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("clutter_service");
+		ros::ServiceClient find_objects_service = nh.serviceClient<squirrel_manipulation_msgs::GetObjectPositions>("/getObjectsPositions");
 		
 		// Create all literals that are related to 'connected to'.
 		for (VAL::const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
@@ -120,14 +121,25 @@ void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment 
 						
 						std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
 						
+						// Get all the objects.
+						// Get all the objects.
+						squirrel_manipulation_msgs::GetObjectPositions op;
+						if (!find_objects_service.call(op))
+						{
+							ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
+							exit(1);
+						}
+						InitialStateEvaluator::transform(op, objects);
+						
 						squirrel_navigation_msgs::ClutterPlannerSrv srv;
 						srv.request.goal = wp2_loc;
 						srv.request.start = wp1_loc;
 						srv.request.obstacles_in = objects;
 						srv.request.grid = InitialStateEvaluator::getGrid();
 						
-						if (client.call(srv))
+						if (!client.call(srv))
 						{
+							continue;
 							//std::cout << "Connected: " << s->getName() << " -> " << s2->getName() << std::endl;
 						} else {
 							//std::cout << "Not connected: " << s->getName() << " -> " << s2->getName() << std::endl;
