@@ -78,7 +78,7 @@ void InitialStateEvaluator::setInitialState()
 	
 	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
 	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
-	/*
+	
 	//mongodb_store::MessageStoreProxy messageStore(*nh);
 	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
 	{
@@ -172,7 +172,7 @@ void InitialStateEvaluator::setInitialState()
 			}
 		}
 	}
-	*/
+	
 	for(pc_list<simple_effect*>::const_iterator i = 
 				current_analysis->the_problem->initial_state->add_effects.begin();
 				i != current_analysis->the_problem->initial_state->add_effects.end();++i)
