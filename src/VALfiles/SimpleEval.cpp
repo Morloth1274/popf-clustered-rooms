@@ -86,20 +86,20 @@ void InitialStateEvaluator::fromRadiusToCellVector(const double& radius, squirre
 void InitialStateEvaluator::transform(const squirrel_manipulation_msgs::GetObjectPositions& object_positions, std::vector<squirrel_navigation_msgs::ObjectMSG>& objects)
 {
 	objects.clear();
-	squirrel_navigation_msgs::ObjectMSG tmp;
 	for (unsigned int i = 0; i < object_positions.response.objectids.size(); ++i) {
-			tmp.uid = i;
-			tmp.center_wx = object_positions.response.objectposes[i].position.x;
-			tmp.center_wy = object_positions.response.objectposes[i].position.y;
-			unsigned int my, mx;
-			if (worldToMap(tmp.center_wx, tmp.center_wy, mx, my)) {
-					tmp.center_cell.mx = mx;
-					tmp.center_cell.my = my;
-					fromRadiusToCellVector(object_positions.response.diameters[i], tmp);
-			} else {
-					ROS_ERROR("SHOULD NOT HAPPEN IN GET OBJECT CLIENT WORLD TO MAP FAILED");
-			}
-			objects.push_back(tmp);
+		squirrel_navigation_msgs::ObjectMSG tmp;
+		tmp.uid = i;
+		tmp.center_wx = object_positions.response.objectposes[i].position.x;
+		tmp.center_wy = object_positions.response.objectposes[i].position.y;
+		unsigned int my, mx;
+		if (worldToMap(tmp.center_wx, tmp.center_wy, mx, my)) {
+			tmp.center_cell.mx = mx;
+			tmp.center_cell.my = my;
+			fromRadiusToCellVector(object_positions.response.diameters[i], tmp);
+		} else {
+			ROS_ERROR("SHOULD NOT HAPPEN IN GET OBJECT CLIENT WORLD TO MAP FAILED");
+		}
+		objects.push_back(tmp);
 	}
 	ROS_INFO("SIZE OF OBJECTS IN OBJECT_CLIENT %zu", objects.size());
 }
@@ -127,6 +127,16 @@ void InitialStateEvaluator::setInitialState()
 	
 	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
 	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
+
+	// Get all the objects.
+	std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
+	squirrel_manipulation_msgs::GetObjectPositions op;
+	if (!find_objects_service.call(op))
+	{
+		ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
+		exit(1);
+	}
+	transform(op, objects);
 	
 	//mongodb_store::MessageStoreProxy messageStore(*nh);
 	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
@@ -168,16 +178,6 @@ void InitialStateEvaluator::setInitialState()
 					std::cout << s->getName() << " = (" << wp1_loc.pose.position.x << ", " << wp1_loc.pose.position.y << ", " << wp1_loc.pose.position.z << ")" << std::endl;
 					std::cout << s2->getName() << " = (" << wp2_loc.pose.position.x << ", " << wp2_loc.pose.position.y << ", " << wp2_loc.pose.position.z << ")" << std::endl;
 					
-					std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
-					
-					// Get all the objects.
-					squirrel_manipulation_msgs::GetObjectPositions op;
-					if (!find_objects_service.call(op))
-					{
-						ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
-						exit(1);
-					}
-					transform(op, objects);
 					
 					squirrel_navigation_msgs::ClutterPlannerSrv srv;
 					srv.request.goal = wp2_loc;
