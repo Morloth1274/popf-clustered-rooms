@@ -104,41 +104,33 @@ void InitialStateEvaluator::transform(const squirrel_manipulation_msgs::GetObjec
 	ROS_INFO("SIZE OF OBJECTS IN OBJECT_CLIENT %zu", objects.size());
 }
 
-// Bram: Change this function.
-void InitialStateEvaluator::setInitialState()
-{
-	ros::NodeHandle nh("popf");
-	ros::Subscriber sub = nh.subscribe("/map", 1, &InitialStateEvaluator::receiveMap);
-	
-	std::cout << "InitialStateEvaluator::setInitialState() - waiting for the static map te become available." << std::endl;
-	while (!grid_initialised)
-	{
-		ros::spinOnce();
-	}
-	
-	std::cout << "InitialStateEvaluator::setInitialState() - static map is now available!" << std::endl;
-	
-	mongodb_store::MessageStoreProxy messageStore(nh);
-	ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("clutter_service");
-	ros::ServiceClient find_objects_service = nh.serviceClient<squirrel_manipulation_msgs::GetObjectPositions>("/getObjectsPositions");
-	
-	initState.clear();
-	init0State.clear();
-	
-	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
-	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
 
-	// Get all the objects.
-	std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
-	squirrel_manipulation_msgs::GetObjectPositions op;
-	if (!find_objects_service.call(op))
+VAL::const_symbol* InitialStateEvaluator::findObject(const std::string& name)
+{
+	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
 	{
-		ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
-		exit(1);
+		VAL::const_symbol* s = *ci;
+		if (s->getName() == name)
+		{
+			return s;
+		}
 	}
-	transform(op, objects);
 	
-	//mongodb_store::MessageStoreProxy messageStore(*nh);
+	std::cerr << "Could not find the object: " << name << std::endl;
+	std::cout << "All known objects: " << std::endl;
+	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
+	{
+		VAL::const_symbol* s = *ci;
+		std::cout << s->getName() << std::endl;
+	}
+	// This should NEVER happen!
+	assert(false);
+	exit(-1);
+	return nullptr;
+}
+
+void InitialStateEvaluator::connectWaypoints(mongodb_store::MessageStoreProxy& messageStore, ros::ServiceClient& client, const std::vector<squirrel_navigation_msgs::ObjectMSG>& objects)
+{
 	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
 	{
 		VAL::const_symbol* s = *ci;
@@ -177,6 +169,8 @@ void InitialStateEvaluator::setInitialState()
 					// Now we can call the pathplanner to initialise the initial state.
 					std::cout << s->getName() << " = (" << wp1_loc.pose.position.x << ", " << wp1_loc.pose.position.y << ", " << wp1_loc.pose.position.z << ")" << std::endl;
 					std::cout << s2->getName() << " = (" << wp2_loc.pose.position.x << ", " << wp2_loc.pose.position.y << ", " << wp2_loc.pose.position.z << ")" << std::endl;
+					wp1_loc.pose.position.z = 0;
+					wp2_loc.pose.position.z = 0;
 					
 					
 					squirrel_navigation_msgs::ClutterPlannerSrv srv;
@@ -226,11 +220,120 @@ void InitialStateEvaluator::setInitialState()
 					simple_effect* se = new simple_effect(prop);
 					current_analysis->the_problem->initial_state->add_effects.push_back(se);
 
-					std::cout << "Insert " << prop->head->getName() << " (" << prop->head << ") Into the initial state!" << std::endl;
+					//std::cout << "Insert " << prop->head->getName() << " (" << prop->head << ") Into the initial state!" << std::endl;
+					std::cout << "Insert (" << prop->head->getName();
+					for (VAL::parameter_symbol* cs : *var_list)
+					{
+						std::cout << " " << cs->getName();
+					}
+					std::cout << ")" << std::endl;
 				}
 			}
 		}
 	}
+}
+
+void InitialStateEvaluator::makeObjectsPushable(mongodb_store::MessageStoreProxy& messageStore, ros::ServiceClient& client, const std::vector<squirrel_navigation_msgs::ObjectMSG>& objects)
+{
+	const std::string directions[] { "north", "south", "west", "east" };
+	const Math::Vector direction_vectors[] { Math::Vector(0, 1, 0), Math::Vector(0, -1, 0), Math::Vector(1, 0, 0), Math::Vector(-1, 0, 0) };
+	
+	for (const_symbol_list::const_iterator ci = current_analysis->the_problem->objects->begin(); ci != current_analysis->the_problem->objects->end(); ++ci)
+	{
+		VAL::const_symbol* s = *ci;
+		if (s->type->getName() == "object")
+		{
+			std::stringstream ss;
+			ss << s->getName() << "_wp";
+			VAL::const_symbol* object_waypoint = findObject(ss.str());
+			
+			for (unsigned int i = 0; i < 4; ++i)
+			{
+				ss.str(std::string());
+				ss << s->getName() << "_" << directions[i] << "_wp";
+				VAL::const_symbol* object_directed_waypoint = findObject(ss.str());
+				
+				// Make the object pushable from this location.
+				pred_symbol * p = current_analysis->pred_tab.symbol_get("pushable_from");
+				//std::cout << "Found predicate symbol at: " << p << std::endl;
+				
+				holding_pred_symbol* hps = dynamic_cast<holding_pred_symbol*>(p);
+				/*
+				std::cout << " ===== Exising extended pred symbol ===== Address: " << hps << std::endl;
+				
+				for (holding_pred_symbol::PIt pit = hps->pBegin(); pit != hps->pEnd(); ++pit)
+				{
+					extended_pred_symbol* eps = *pit;
+					std::cout << "\tProcess: " << eps->getName() << " (" << eps << ")" << std::endl;
+				}
+				*/
+				// Lookup the extended predicate symbol with the correct types.
+				std::vector<VAL::pddl_type*> pddl_types;
+				pddl_types.push_back(object_waypoint->type);
+				pddl_types.push_back(object_directed_waypoint->type);
+				extended_pred_symbol* eps = hps->find<std::vector<VAL::pddl_type*>::const_iterator>(p, pddl_types.begin(), pddl_types.end());
+				
+				//std::cout << "\tFound the pred symbol: " << eps->getName() << " (" << eps << ")" << std::endl;
+				
+				//std::cout << "Initialise the initial state for: " << p->getName() << std::endl;
+				parameter_symbol_list* var_list = new parameter_symbol_list();
+				var_list->push_back(object_waypoint);
+				var_list->push_back(object_directed_waypoint);
+				
+				proposition* prop = new proposition(eps, var_list);
+				eps->setInitial(prop);
+				
+				simple_effect* se = new simple_effect(prop);
+				current_analysis->the_problem->initial_state->add_effects.push_back(se);
+
+				std::cout << "Insert (" << prop->head->getName();
+				for (VAL::parameter_symbol* cs : *var_list)
+				{
+					std::cout << " " << cs->getName();
+				}
+				std::cout << ")" << std::endl;
+			}
+		}
+	}
+}
+
+
+// Bram: Change this function.
+void InitialStateEvaluator::setInitialState()
+{
+	ros::NodeHandle nh("popf");
+	ros::Subscriber sub = nh.subscribe("/map", 1, &InitialStateEvaluator::receiveMap);
+	
+	std::cout << "InitialStateEvaluator::setInitialState() - waiting for the static map te become available." << std::endl;
+	while (!grid_initialised)
+	{
+		ros::spinOnce();
+	}
+	
+	std::cout << "InitialStateEvaluator::setInitialState() - static map is now available!" << std::endl;
+	
+	mongodb_store::MessageStoreProxy messageStore(nh);
+	ros::ServiceClient client = nh.serviceClient<squirrel_navigation_msgs::ClutterPlannerSrv>("/clutter_service");
+	ros::ServiceClient find_objects_service = nh.serviceClient<squirrel_manipulation_msgs::GetObjectPositions>("/getObjectsPositions");
+	
+	initState.clear();
+	init0State.clear();
+	
+	std::vector<std::pair<parameter_symbol, parameter_symbol> > waypoints;
+	std::map<std::string, geometry_msgs::PoseStamped> retreived_waypoints;
+
+	// Get all the objects.
+	std::vector<squirrel_navigation_msgs::ObjectMSG> objects;
+	squirrel_manipulation_msgs::GetObjectPositions op;
+	if (!find_objects_service.call(op))
+	{
+		ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
+		exit(1);
+	}
+	transform(op, objects);
+	
+	connectWaypoints(messageStore, client, objects);
+	makeObjectsPushable(messageStore, client, objects);
 	
 	for(pc_list<simple_effect*>::const_iterator i = 
 				current_analysis->the_problem->initial_state->add_effects.begin();

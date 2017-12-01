@@ -62,7 +62,7 @@ void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment 
 	
 	// If an action was executed that could change the location of the objects we need to recheck the connectivity
 	// of all waypoints in the domain.
-	//std::cout << "****[POTHelper_updateForPathfinder] For action: " << a.first->forOp()->name->getName() << std::endl;
+	std::cout << "****[POTHelper_updateForPathfinder] For action: " << a.first->forOp()->name->getName() << std::endl;
 	
 	//a.first->writeAllLiterals(std::cout);
 	//std::cout << std::endl;
@@ -86,6 +86,23 @@ void POTHelper_updateForPathfinder(MinimalState & theState, const ActionSegment 
 			ROS_ERROR("KCL: (SquirrelPlanningCluttered) Could not call the server to get all the objects in the domain!");
 			exit(1);
 		}
+		
+		// Move the object that is pushed to the correct location.
+		VAL::var_symbol_list::const_iterator ci = a.first->forOp()->parameters->begin();
+		const VAL::var_symbol* robot = *ci++;
+		const VAL::var_symbol* object = *ci++;
+		const VAL::var_symbol* from = *ci++;
+		const VAL::var_symbol* to = *ci++;
+		const VAL::var_symbol* push_location = *ci++;
+		const VAL::var_symbol* object_location = *ci;
+		
+		std::cout << "- Robot: " << robot->getName() << std::endl;
+		std::cout << "- Object: " << object->getName() << std::endl;
+		std::cout << "- From: " << from->getName() << std::endl;
+		std::cout << "- To: " << to->getName() << std::endl;
+		std::cout << "- Push Location: " << push_location->getName() << std::endl;
+		std::cout << "- Object Location: " << object_location->getName() << std::endl;
+		
 		InitialStateEvaluator::transform(op, objects);
 		
 		// Create all literals that are related to 'connected to'.

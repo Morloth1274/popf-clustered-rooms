@@ -38,6 +38,57 @@
 #include <squirrel_manipulation_msgs/GetObjectPositions.h>
 #include <squirrel_navigation_msgs/ObjectMSG.h>
 
+namespace Math {
+	struct Vector
+	{
+		Vector(float x, float y, float z)
+			: x_(x), y_(y), z_(z)
+		{
+			
+		}
+		
+		Vector operator+(const Vector& v)
+		{
+			return Vector(x_ + v.x_, y_ + v.y_, z_ + v.z_);
+		}
+		
+		Vector& operator+=(const Vector& v)
+		{
+			x_ += v.x_;
+			y_ += v.y_;
+			z_ += v.z_;
+			return *this;
+		}
+		
+		Vector operator-(const Vector& v)
+		{
+			return Vector(x_ - v.x_, y_ - v.y_, z_ - v.z_);
+		}
+		
+		Vector& operator-=(const Vector& v)
+		{
+			x_ -= v.x_;
+			y_ -= v.y_;
+			z_ -= v.z_;
+			return *this;
+		}
+		
+		float dot(const Vector& v)
+		{
+			return x_ * v.x_ + y_ + y_ * v.y_ + z_ * v.z_;
+		}
+		
+		Vector cross(const Vector& v)
+		{
+			return Vector(y_ * z_ - v.y_ * v.z_,
+			              z_ * x_ - v.z_ * v.x_,
+			              x_ * y_ - v.x_ * v.y_);
+		}
+		
+		float x_, y_, z_;
+	};
+};
+
 namespace VAL {
 
 	class TypeChecker;
@@ -87,9 +138,11 @@ protected:
 	static nav_msgs::OccupancyGrid grid;
 	static bool grid_initialised;
 private:
-	//static ros::NodeHandle nh;
-	//static mongodb_store::MessageStoreProxy messageStore;
-	//static bool ros_initiated;
+	static void connectWaypoints(mongodb_store::MessageStoreProxy& messageStore, ros::ServiceClient& client, const std::vector<squirrel_navigation_msgs::ObjectMSG>& objects);
+	static void makeObjectsPushable(mongodb_store::MessageStoreProxy& messageStore, ros::ServiceClient& client, const std::vector<squirrel_navigation_msgs::ObjectMSG>& objects);
+	
+	static VAL::const_symbol* findObject(const std::string& name);
+	
 	static bool worldToMap(double wx, double wy, unsigned int& mx, unsigned int& my);
 	static void fromRadiusToCellVector(const double& radius, squirrel_navigation_msgs::ObjectMSG& obj);
 public:
@@ -127,6 +180,8 @@ protected:
 	bool isDuration;
 
 	PrimitiveEvaluator * const primev;
+	
+	static std::vector<std::string> objects_;
 	
 public:
 

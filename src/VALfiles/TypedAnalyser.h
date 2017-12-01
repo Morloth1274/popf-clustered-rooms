@@ -444,17 +444,17 @@ public:
 			pospreconds(), negpreconds(), adds(), dels(), props(0),
 			owner(false)
 	{
-		std::cout << "Created extended_pred_symbol for ";
-		p->write(std::cout);
-		std::cout << std::endl;
+		//std::cout << "Created extended_pred_symbol for ";
+		//p->write(std::cout);
+		//std::cout << std::endl;
 			int i = 0;
 			for(parameter_symbol_list::iterator j = p->args->begin();
 					j != p->args->end();++j,++i)
 			{
 				 types[i] = (*j); //->type;
-				 std::cout << "[" << i << "] Is of type: ";
-				 (*j)->write(std::cout);
-				 std::cout << std::endl;
+				 //std::cout << "[" << i << "] Is of type: ";
+				 //(*j)->write(std::cout);
+				 //std::cout << std::endl;
 			};
             #ifdef STATICHACK
             overruledStaticStatus = -1;
@@ -991,10 +991,10 @@ public:
 	template<typename TI>
 	PropStore * buildPropStore(extended_pred_symbol * e,TI ai,TI bi) //const vector<pddl_type *> & tps)
 	{
-		cout << "I am at " << this << "\n";
-		cout << "Counting for ";
-		e->writeName(cout); 
-		cout << "\n";
+		//cout << "I am at " << this << "\n";
+		//cout << "Counting for ";
+		//e->writeName(cout); 
+		//cout << "\n";
 		int c = 1;
 		vector<pair<pddl_type *,vector<const pddl_type *> > > xs(bi-ai);//tps.size());
 		int j = 0;
@@ -1004,13 +1004,13 @@ public:
 			{
 				if(!(*i))
 				{
-					cout << "Strange type (2)\n";
+					//cout << "Strange type (2)\n";
 					continue;
 				};
 				
 				if((*i)->type)
 				{
-					cout << "Managing: " << (*i)->type->getName() << "\n";
+					//cout << "Managing: " << (*i)->type->getName() << "\n";
 					xs[j] = make_pair((*i)->type,//theTC->accumulateAll((*i)->type)); 
 												theTC->leaves((*i)->type));
 					
@@ -1019,12 +1019,12 @@ public:
 				{
 					if(!(*i)->either_types)
 					{
-						cout << "Expected either types and there aren't any!\n";
-						e->writeName(cout);
-						cout << "\n";
+						//cout << "Expected either types and there aren't any!\n";
+						//e->writeName(cout);
+						//cout << "\n";
 						continue;
 					};
-					cout << "An either type symbol!\n";
+					//cout << "An either type symbol!\n";
 	// OK, I think we have to find all the leaves for these either types. 
 					vector<const pddl_type *> ttps;
 					for(pddl_type_list::iterator k = (*i)->either_types->begin();k != (*i)->either_types->end();++k)
@@ -1039,31 +1039,31 @@ public:
 					xs[j] = make_pair((pddl_type*)0,ttps);
 				};
 				int x = xs[j].second.size();
-				cout << "Has " << x << " leaves\n";
+				//cout << "Has " << x << " leaves\n";
 				if(x >= 2) c *= x;
 			};
 		};
 		if(c == 1)
 		{
-			std::cout << "Get the SimplePropStore..." << std::endl;
+			//std::cout << "Get the SimplePropStore..." << std::endl;
 			SimplePropStore * s = baseStores.get(typeIt(ai),typeIt(bi)); //tps.begin(),tps.end());
-			std::cout << "Evaluate..." << std::endl;
+			//std::cout << "Evaluate..." << std::endl;
 			if(!s) 
 			{
-				cout << "Built simple store\n";
+				//cout << "Built simple store\n";
 				s = new SimplePropStore(e);
 				baseStores.insert(typeIt(ai),typeIt(bi),s); //tps.begin(),tps.end(),s);
 			}
 			else
 			{
-				std::cout << "setEP..." << std::endl;
+				//std::cout << "setEP..." << std::endl;
 				s->setEP(e);
 			};
 			return s;
 		}
 		else
 		{
-			cout << "Building for " << e->getName() << " " << c << " elements\n";
+			//cout << "Building for " << e->getName() << " " << c << " elements\n";
 			return new CompoundPropStore(c,xs,baseStores,e,a);
 		};
 	};
